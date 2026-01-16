@@ -1,39 +1,47 @@
-import { http, createConfig, createStorage, cookieStorage } from 'wagmi';
-import { mainnet, arbitrum, base, optimism } from 'wagmi/chains';
-import { coinbaseWallet, injected, walletConnect } from 'wagmi/connectors';
+import { getDefaultConfig } from '@rainbow-me/rainbowkit';
+import {
+  mainnet,
+  arbitrum,
+  base,
+  optimism,
+  polygon,
+  bsc,
+  avalanche,
+  gnosis,
+  fantom,
+  zkSync,
+  linea,
+  scroll,
+  mantle,
+  blast,
+} from 'wagmi/chains';
 
-const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || '';
+const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
 
-export const config = createConfig({
-  chains: [mainnet, arbitrum, base, optimism],
-  connectors: [
-    injected({
-      shimDisconnect: true,
-    }),
-    walletConnect({
-      projectId,
-      showQrModal: true,
-      metadata: {
-        name: 'TAGO Leap',
-        description: 'Trade narratives, onboard to Hyperliquid, and run robo-managers',
-        url: typeof window !== 'undefined' ? window.location.origin : '',
-        icons: [],
-      },
-    }),
-    coinbaseWallet({
-      appName: 'TAGO Leap',
-    }),
+if (!projectId) {
+  throw new Error('NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID is not set. Get one at https://cloud.walletconnect.com');
+}
+
+export const config = getDefaultConfig({
+  appName: 'TAGO Leap',
+  projectId,
+  chains: [
+    mainnet,
+    arbitrum,
+    base,
+    optimism,
+    polygon,
+    bsc,
+    avalanche,
+    gnosis,
+    fantom,
+    zkSync,
+    linea,
+    scroll,
+    mantle,
+    blast,
   ],
-  storage: createStorage({
-    storage: cookieStorage,
-  }),
   ssr: true,
-  transports: {
-    [mainnet.id]: http(),
-    [arbitrum.id]: http(),
-    [base.id]: http(),
-    [optimism.id]: http(),
-  },
 });
 
 declare module 'wagmi' {

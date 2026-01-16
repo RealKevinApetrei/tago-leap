@@ -3,10 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
-import { useWallet } from '@/contexts/WalletContext';
-import { Button } from './ui/Button';
-import { ConnectWalletModal } from './ConnectWalletModal';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 
 const navItems = [
   { label: 'Onboard', href: '/onboard' },
@@ -16,88 +13,139 @@ const navItems = [
 
 export function Navigation() {
   const pathname = usePathname();
-  const { address, isConnected, isConnecting, disconnect } = useWallet();
-  const [showModal, setShowModal] = useState(false);
-
-  const formatAddress = (addr: string) => {
-    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-  };
 
   return (
-    <>
-      <nav className="fixed top-0 left-0 right-0 z-50 glass-strong">
-        <div className="max-w-4xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            {/* Logo */}
-            <Link href="/" className="flex items-center gap-3 group">
-              <div className="relative w-9 h-9 rounded-lg overflow-hidden shadow-lg shadow-tago-yellow-500/20 group-hover:shadow-tago-yellow-500/30 transition-shadow">
-                <Image
-                  src="/logo.png"
-                  alt="TAGO Leap"
-                  fill
-                  className="object-cover"
-                  priority
-                />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-base font-light text-white tracking-wide">
-                  <span className="italic text-tago-yellow-400">TAGO</span> Leap
-                </span>
-              </div>
-            </Link>
-
-            {/* Center Navigation Links */}
-            <div className="flex items-center gap-1 bg-white/5 rounded-xl p-1">
-              {navItems.map((item) => {
-                const isActive = pathname === item.href;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`
-                      relative px-4 py-2 rounded-lg text-sm tracking-wide transition-all duration-300
-                      ${
-                        isActive
-                          ? 'bg-gradient-to-r from-tago-yellow-400 to-tago-yellow-500 text-black font-medium shadow-lg shadow-tago-yellow-500/20'
-                          : 'text-white/60 hover:text-white hover:bg-white/5 font-light'
-                      }
-                    `}
-                  >
-                    {item.label}
-                    {isActive && (
-                      <span className="absolute inset-0 rounded-lg bg-tago-yellow-400/20 blur-xl -z-10" />
-                    )}
-                  </Link>
-                );
-              })}
+    <nav className="fixed top-0 left-0 right-0 z-50 glass-strong">
+      <div className="max-w-4xl mx-auto px-4 py-3">
+        <div className="flex items-center justify-between">
+          {/* Logo */}
+          <Link href="/" className="flex items-center gap-3 group">
+            <div className="relative w-9 h-9 rounded-lg overflow-hidden shadow-lg shadow-tago-yellow-500/20 group-hover:shadow-tago-yellow-500/30 transition-shadow">
+              <Image
+                src="/logo.png"
+                alt="TAGO Leap"
+                fill
+                className="object-cover"
+                priority
+              />
             </div>
-
-            {/* Wallet Button */}
-            <div>
-              {isConnected && address ? (
-                <button
-                  onClick={() => disconnect()}
-                  className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-sm text-white/90 font-mono"
-                  title={address}
-                >
-                  {formatAddress(address)}
-                </button>
-              ) : (
-                <Button
-                  variant="yellow"
-                  size="sm"
-                  onClick={() => setShowModal(true)}
-                  loading={isConnecting}
-                >
-                  Connect Wallet
-                </Button>
-              )}
+            <div className="flex flex-col">
+              <span className="text-base font-light text-white tracking-wide">
+                <span className="italic text-tago-yellow-400">TAGO</span> Leap
+              </span>
             </div>
+          </Link>
+
+          {/* Center Navigation Links */}
+          <div className="flex items-center gap-1 bg-white/5 rounded-xl p-1">
+            {navItems.map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`
+                    relative px-4 py-2 rounded-lg text-sm tracking-wide transition-all duration-300
+                    ${
+                      isActive
+                        ? 'bg-gradient-to-r from-tago-yellow-400 to-tago-yellow-500 text-black font-medium shadow-lg shadow-tago-yellow-500/20'
+                        : 'text-white/60 hover:text-white hover:bg-white/5 font-light'
+                    }
+                  `}
+                >
+                  {item.label}
+                  {isActive && (
+                    <span className="absolute inset-0 rounded-lg bg-tago-yellow-400/20 blur-xl -z-10" />
+                  )}
+                </Link>
+              );
+            })}
           </div>
-        </div>
-      </nav>
 
-      <ConnectWalletModal isOpen={showModal} onClose={() => setShowModal(false)} />
-    </>
+          {/* Wallet Button */}
+          <ConnectButton.Custom>
+            {({
+              account,
+              chain,
+              openAccountModal,
+              openChainModal,
+              openConnectModal,
+              mounted,
+            }) => {
+              const ready = mounted;
+              const connected = ready && account && chain;
+
+              return (
+                <div
+                  {...(!ready && {
+                    'aria-hidden': true,
+                    style: {
+                      opacity: 0,
+                      pointerEvents: 'none',
+                      userSelect: 'none',
+                    },
+                  })}
+                >
+                  {(() => {
+                    if (!connected) {
+                      return (
+                        <button
+                          onClick={openConnectModal}
+                          className="px-4 py-2 rounded-lg bg-gradient-to-r from-tago-yellow-400 to-tago-yellow-500 text-black font-medium text-sm hover:shadow-lg hover:shadow-tago-yellow-500/25 transition-all"
+                        >
+                          Connect Wallet
+                        </button>
+                      );
+                    }
+
+                    if (chain.unsupported) {
+                      return (
+                        <button
+                          onClick={openChainModal}
+                          className="px-4 py-2 rounded-lg bg-red-500/20 border border-red-500/50 text-red-400 font-medium text-sm hover:bg-red-500/30 transition-all"
+                        >
+                          Wrong Network
+                        </button>
+                      );
+                    }
+
+                    return (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={openChainModal}
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-sm"
+                        >
+                          {chain.hasIcon && (
+                            <div
+                              className="w-5 h-5 rounded-full overflow-hidden"
+                              style={{ background: chain.iconBackground }}
+                            >
+                              {chain.iconUrl && (
+                                <img
+                                  alt={chain.name ?? 'Chain icon'}
+                                  src={chain.iconUrl}
+                                  className="w-5 h-5"
+                                />
+                              )}
+                            </div>
+                          )}
+                        </button>
+
+                        <button
+                          onClick={openAccountModal}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-sm text-white/90 font-mono"
+                        >
+                          {account.displayName}
+                        </button>
+                      </div>
+                    );
+                  })()}
+                </div>
+              );
+            }}
+          </ConnectButton.Custom>
+        </div>
+      </div>
+    </nav>
   );
 }
