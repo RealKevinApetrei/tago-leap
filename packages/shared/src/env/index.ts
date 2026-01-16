@@ -27,6 +27,10 @@ export const lifiEnvSchema = baseEnvSchema.extend({
 export const saltEnvSchema = baseEnvSchema.extend({
   SALT_SERVICE_PORT: z.coerce.number().default(3003),
   PEAR_SERVICE_URL: z.string().url().default('http://localhost:3001'),
+  // Salt SDK configuration (uses SIWER authentication, no API keys)
+  SALT_ENVIRONMENT: z.enum(['TESTNET', 'PRODUCTION']).default('TESTNET'),
+  SALT_MNEMONIC: z.string().optional(),
+  SALT_RPC_URL: z.string().url().optional(),
 });
 
 // Frontend environment schema (public vars)

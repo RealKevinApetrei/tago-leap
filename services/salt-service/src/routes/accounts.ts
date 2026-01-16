@@ -12,11 +12,13 @@ import {
   createSaltAccount,
   getSaltAccountById,
   getSaltAccountByUserId,
+  getSaltAccountByWalletAddress,
   upsertSaltPolicy,
   getLatestPolicy,
   createSaltStrategy,
   getStrategiesByAccountId,
 } from '../domain/saltRepo.js';
+import { getOrCreateSaltWallet } from '../domain/saltWalletService.js';
 import { validatePolicy } from '../domain/policyTypes.js';
 import { getAllStrategies, getStrategyById } from '../domain/strategyTypes.js';
 
@@ -39,11 +41,54 @@ export async function accountsRoutes(app: FastifyInstance) {
   });
 
   /**
+   * GET /salt/wallets/:address - Get or create salt wallet by user wallet address
+   * This is the main endpoint for the requirement:
+   * - Input: user's wallet address (in URL param)
+   * - Checks if corresponding salt wallet exists in database
+   * - If exists, returns the address
+   * - If not, creates wallet using Salt SDK and returns the address
+   */
+  app.get<{
+    Params: { address: string };
+    Reply: ApiResponse<{ saltWalletAddress: string }>;
+  }>('/wallets/:address', async (request, reply) => {
+    const { address } = request.params;
+
+    if (!address) {
+      return reply.badRequest('Missing wallet address');
+    }
+
+    try {
+      // Get or create salt wallet
+      const saltWalletAddress = await getOrCreateSaltWallet(
+        app.supabase,
+        address
+      );
+
+      return {
+        success: true,
+        data: {
+          saltWalletAddress,
+        },
+      };
+    } catch (error) {
+      console.error('[GET /wallets/:address] Error:', error);
+      return reply.internalServerError(
+        error instanceof Error ? error.message : 'Failed to get or create salt wallet'
+      );
+    }
+  });
+
+  /**
    * POST /salt/accounts - Create a salt account for a user
+   * This uses the getOrCreateSaltWallet function which:
+   * 1. Checks if a salt account exists for the user's wallet address
+   * 2. Returns existing account if found
+   * 3. Creates new salt wallet via Salt SDK and stores in DB if not found
    */
   app.post<{
     Body: { userWalletAddress: string };
-    Reply: ApiResponse<SaltAccount>;
+    Reply: ApiResponse<{ saltAccountAddress: string; account: SaltAccount }>;
   }>('/accounts', async (request, reply) => {
     const { userWalletAddress } = request.body;
 
@@ -51,24 +96,28 @@ export async function accountsRoutes(app: FastifyInstance) {
       return reply.badRequest('Missing userWalletAddress');
     }
 
-    // Get or create user
-    const user = await getOrCreateUser(app.supabase, userWalletAddress);
+    // Get or create salt wallet (this calls Salt SDK if needed)
+    const saltAccountAddress = await getOrCreateSaltWallet(
+      app.supabase,
+      userWalletAddress
+    );
 
-    // Check if account already exists
-    const existing = await getSaltAccountByUserId(app.supabase, user.id);
-    if (existing) {
-      return {
-        success: true,
-        data: existing,
-      };
+    // Get the account record from database
+    const account = await getSaltAccountByWalletAddress(
+      app.supabase,
+      userWalletAddress
+    );
+
+    if (!account) {
+      return reply.internalServerError('Failed to retrieve created account');
     }
-
-    // Create new salt account
-    const account = await createSaltAccount(app.supabase, user.id);
 
     return {
       success: true,
-      data: account,
+      data: {
+        saltAccountAddress,
+        account,
+      },
     };
   });
 

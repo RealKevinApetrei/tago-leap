@@ -10,6 +10,16 @@ export interface SaltPolicy {
 
 /**
  * Default policy for new accounts.
+ *
+ * This is the single source of truth for default policy values.
+ * All other parts of the codebase should import this constant
+ * rather than defining their own defaults.
+ *
+ * Conservative settings:
+ * - 2x leverage (low risk)
+ * - $10k daily limit (moderate position sizing)
+ * - Major pairs only (BTC, ETH, SOL)
+ * - 10% max drawdown (capital preservation)
  */
 export const defaultPolicy: SaltPolicy = {
   maxLeverage: 2,

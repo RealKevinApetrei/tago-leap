@@ -13,16 +13,17 @@ import { randomBytes } from 'crypto';
 
 export async function createSaltAccount(
   supabase: SupabaseAdminClient,
-  userId: string
+  userId: string,
+  saltAccountAddress?: string
 ): Promise<SaltAccount> {
-  // Generate a fake salt account address
-  const saltAccountAddress = `0xsalt_${randomBytes(20).toString('hex')}`;
+  // Use provided address or generate a placeholder
+  const address = saltAccountAddress || `0xsalt_${randomBytes(20).toString('hex')}`;
 
   const { data, error } = await supabase
     .from('salt_accounts')
     .insert({
       user_id: userId,
-      salt_account_address: saltAccountAddress,
+      salt_account_address: address,
     })
     .select()
     .single();
@@ -63,6 +64,25 @@ export async function getSaltAccountByUserId(
 
   if (error && error.code !== 'PGRST116') {
     throw new Error(`Failed to get salt account: ${error.message}`);
+  }
+
+  return data;
+}
+
+export async function getSaltAccountByWalletAddress(
+  supabase: SupabaseAdminClient,
+  walletAddress: string
+): Promise<SaltAccount | null> {
+  const normalizedAddress = walletAddress.toLowerCase();
+
+  const { data, error } = await supabase
+    .from('salt_accounts')
+    .select('*, users!inner(wallet_address)')
+    .eq('users.wallet_address', normalizedAddress)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    throw new Error(`Failed to get salt account by wallet address: ${error.message}`);
   }
 
   return data;
