@@ -10,9 +10,8 @@ const baseEnvSchema = z.object({
 // Pear service environment schema
 export const pearEnvSchema = baseEnvSchema.extend({
   PEAR_SERVICE_PORT: z.coerce.number().default(3001),
-  PEAR_BASE_URL: z.string().url().optional(),
-  PEAR_CLIENT_ID: z.string().optional(),
-  PEAR_API_KEY: z.string().optional(),
+  PEAR_API_BASE_URL: z.string().url().default('https://hl-v2.pearprotocol.io'),
+  ANTHROPIC_API_KEY: z.string().min(1),
 });
 
 // LI.FI service environment schema

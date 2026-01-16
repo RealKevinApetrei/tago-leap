@@ -59,6 +59,50 @@ export type Database = {
           },
         ]
       }
+      pear_auth_tokens: {
+        Row: {
+          access_token: string
+          access_token_expires_at: string
+          created_at: string | null
+          id: string
+          refresh_token: string
+          refresh_token_expires_at: string
+          updated_at: string | null
+          user_id: string | null
+          wallet_address: string
+        }
+        Insert: {
+          access_token: string
+          access_token_expires_at: string
+          created_at?: string | null
+          id?: string
+          refresh_token: string
+          refresh_token_expires_at: string
+          updated_at?: string | null
+          user_id?: string | null
+          wallet_address: string
+        }
+        Update: {
+          access_token?: string
+          access_token_expires_at?: string
+          created_at?: string | null
+          id?: string
+          refresh_token?: string
+          refresh_token_expires_at?: string
+          updated_at?: string | null
+          user_id?: string | null
+          wallet_address?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pear_auth_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       salt_accounts: {
         Row: {
           created_at: string | null
