@@ -254,6 +254,7 @@ export type Database = {
       }
       trades: {
         Row: {
+          account_ref: string | null
           created_at: string | null
           direction: string
           id: string
@@ -262,12 +263,14 @@ export type Database = {
           pear_order_payload: Json | null
           pear_response: Json | null
           risk_profile: string
+          source: string | null
           stake_usd: number
           status: string | null
           updated_at: string | null
           user_id: string | null
         }
         Insert: {
+          account_ref?: string | null
           created_at?: string | null
           direction: string
           id?: string
@@ -276,12 +279,14 @@ export type Database = {
           pear_order_payload?: Json | null
           pear_response?: Json | null
           risk_profile: string
+          source?: string | null
           stake_usd: number
           status?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
         Update: {
+          account_ref?: string | null
           created_at?: string | null
           direction?: string
           id?: string
@@ -290,6 +295,7 @@ export type Database = {
           pear_order_payload?: Json | null
           pear_response?: Json | null
           risk_profile?: string
+          source?: string | null
           stake_usd?: number
           status?: string | null
           updated_at?: string | null

@@ -148,7 +148,10 @@ export interface SuggestNarrativeRequest {
   prompt: string;
 }
 
-// New execute trade request (for real Pear API)
+// Trade source type
+export type TradeSource = 'user' | 'salt';
+
+// Direct-asset execution request (for AI suggestions and manual trades)
 export interface ExecuteTradeRequest {
   userWalletAddress: string;
   longAssets: Array<{ asset: string; weight: number }>;
@@ -156,4 +159,39 @@ export interface ExecuteTradeRequest {
   stakeUsd: number;
   leverage: number;
   slippage?: number;
+  accountRef?: string;      // Salt account address, if robo-managed
+  source?: TradeSource;     // Defaults to 'user'
+}
+
+// Narrative-based execution request (for Salt)
+export interface ExecuteNarrativeTradeRequest {
+  userWalletAddress: string;
+  narrativeId: string;
+  direction: 'longNarrative' | 'shortNarrative';
+  stakeUsd: number;
+  riskProfile: 'conservative' | 'standard' | 'degen';
+  mode: 'pair' | 'basket';
+  accountRef?: string;      // Salt account address
+  source?: TradeSource;     // Defaults to 'user'
+}
+
+// Validation response for dry-run checks
+export interface ValidateTradeResponse {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  computedPayload?: {
+    longAssets: Array<{ asset: string; weight: number }>;
+    shortAssets: Array<{ asset: string; weight: number }>;
+    leverage: number;
+    estimatedNotional: number;
+  };
+}
+
+// Trade filters for querying
+export interface TradeFilters {
+  walletAddress?: string;
+  accountRef?: string;
+  source?: TradeSource;
+  status?: string;
 }
