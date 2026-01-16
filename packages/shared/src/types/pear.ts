@@ -74,10 +74,10 @@ export interface PearPosition {
   updatedAt: string;
 }
 
-// Order types
+// Order types - Pear API uses uppercase execution types
 export interface OpenPositionPayload {
   slippage: number;
-  executionType: 'market' | 'limit';
+  executionType: 'MARKET' | 'LIMIT' | 'TWAP' | 'LADDER';
   leverage: number;
   usdValue: number;
   longAssets: Array<{ asset: string; weight: number }>;

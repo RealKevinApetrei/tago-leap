@@ -20,7 +20,14 @@ async function pearFetch<T>(
   accessToken: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const response = await fetch(`${PEAR_API_BASE}${endpoint}`, {
+  const url = `${PEAR_API_BASE}${endpoint}`;
+  console.log('[pearFetch] Request:', {
+    url,
+    method: options.method || 'GET',
+    hasBody: !!options.body,
+  });
+
+  const response = await fetch(url, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -29,8 +36,11 @@ async function pearFetch<T>(
     },
   });
 
+  console.log('[pearFetch] Response status:', response.status);
+
   if (!response.ok) {
     const error = await response.text();
+    console.error('[pearFetch] Error response:', error);
     throw new Error(`Pear API error: ${response.status} - ${error}`);
   }
 
@@ -208,6 +218,9 @@ export async function openPosition(
   accessToken: string,
   payload: OpenPositionPayload
 ): Promise<OrderResponse> {
+  console.log('[pearClient] Opening position with payload:', JSON.stringify(payload, null, 2));
+  console.log('[pearClient] Access token (first 20 chars):', accessToken?.substring(0, 20) + '...');
+
   return pearFetch<OrderResponse>('/positions', accessToken, {
     method: 'POST',
     body: JSON.stringify(payload),

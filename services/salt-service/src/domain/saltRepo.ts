@@ -347,7 +347,7 @@ export async function getStrategyRunsByAccountId(
     .from('strategy_runs')
     .select('*')
     .in('strategy_id', strategyIds)
-    .order('created_at', { ascending: false })
+    .order('started_at', { ascending: false })
     .limit(limit);
 
   if (error) {

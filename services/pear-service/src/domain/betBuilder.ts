@@ -108,7 +108,7 @@ export function buildOrderFromSaltRequest(params: BuildSaltOrderParams): OpenPos
 
   return {
     slippage: 0.01, // 1% default slippage
-    executionType: 'market',
+    executionType: 'MARKET', // Pear API expects uppercase
     leverage,
     usdValue: stakeUsd,
     longAssets: [{ asset: longAssetSymbol, weight }],

@@ -228,11 +228,11 @@ export async function getAgentWallet(accessToken: string): Promise<AgentWalletSt
     throw new Error(`Failed to get agent wallet: ${error}`);
   }
 
-  const data = await response.json();
+  const data = await response.json() as Record<string, unknown>;
   console.log('[PearAuthClient] Agent wallet response:', JSON.stringify(data));
 
   // Handle both possible response formats
-  const agentAddress = data.agentWalletAddress || data.address || data.agentAddress;
+  const agentAddress = (data.agentWalletAddress || data.address || data.agentAddress) as string | undefined;
 
   if (!agentAddress) {
     console.log('[PearAuthClient] No agent wallet in response');
@@ -268,12 +268,12 @@ export async function createAgentWallet(accessToken: string): Promise<CreateAgen
     throw new Error(`Failed to create agent wallet: ${error}`);
   }
 
-  const data = await response.json();
+  const data = await response.json() as Record<string, unknown>;
   console.log('[PearAuthClient] Agent wallet created response:', JSON.stringify(data));
 
-  const agentAddress = data.agentWalletAddress || data.address || data.agentAddress;
+  const agentAddress = (data.agentWalletAddress || data.address || data.agentAddress) as string;
   return {
     agentWalletAddress: agentAddress,
-    message: data.message || 'Agent wallet created. Please approve on Hyperliquid.',
+    message: (data.message as string) || 'Agent wallet created. Please approve on Hyperliquid.',
   };
 }

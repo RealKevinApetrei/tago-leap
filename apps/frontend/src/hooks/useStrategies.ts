@@ -30,7 +30,7 @@ export interface StrategyRun {
   status: 'running' | 'completed' | 'failed';
   result: Record<string, unknown> | null;
   error: string | null;
-  created_at: string;
+  started_at: string;
   completed_at: string | null;
 }
 

@@ -24,6 +24,7 @@ import {
   getPositions,
   closePosition,
 } from '../clients/pearClient.js';
+import { getAgentWallet } from '../clients/pearAuthClient.js';
 import { getValidAccessToken } from '../domain/authRepo.js';
 import { getNarrativeById } from '../domain/narratives.js';
 import { buildOrderFromSaltRequest, computeNotional, type SaltDirection, type SaltRiskProfile, type SaltMode } from '../domain/betBuilder.js';
@@ -145,10 +146,24 @@ export async function tradesRoutes(app: FastifyInstance) {
       return reply.unauthorized('Authentication required. Please sign in first.');
     }
 
+    // Check agent wallet is set up
+    try {
+      const agentWalletStatus = await getAgentWallet(accessToken);
+      if (!agentWalletStatus.exists) {
+        return reply.badRequest(
+          'Agent wallet not set up. Please create an agent wallet and approve it on Hyperliquid first. ' +
+          'You also need to deposit USDC to Hyperliquid and approve the builder fee.'
+        );
+      }
+    } catch (err) {
+      app.log.error(err, 'Failed to check agent wallet status');
+      // Continue anyway - the error will be caught when opening position
+    }
+
     // Build the order payload for Pear API
     const orderPayload = {
       slippage,
-      executionType: 'market' as const,
+      executionType: 'MARKET' as const, // Pear API expects uppercase
       leverage,
       usdValue: stakeUsd,
       longAssets: longAssets.map(a => ({ asset: a.asset, weight: a.weight })),
@@ -183,14 +198,18 @@ export async function tradesRoutes(app: FastifyInstance) {
         data: updatedTrade,
       };
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+
       // Update trade as failed
       await updateTrade(app.supabase, trade.id, {
         status: 'failed',
-        pear_response: { error: String(err) },
+        pear_response: { error: errorMessage },
       });
 
       app.log.error(err, 'Trade execution failed');
-      return reply.internalServerError('Trade execution failed');
+
+      // Return the actual error message to help debugging
+      return reply.internalServerError(errorMessage || 'Trade execution failed');
     }
   });
 
@@ -269,6 +288,20 @@ export async function tradesRoutes(app: FastifyInstance) {
       return reply.unauthorized('Authentication required. Please sign in first.');
     }
 
+    // Check agent wallet is set up
+    try {
+      const agentWalletStatus = await getAgentWallet(accessToken);
+      if (!agentWalletStatus.exists) {
+        return reply.badRequest(
+          'Agent wallet not set up. Please create an agent wallet and approve it on Hyperliquid first. ' +
+          'You also need to deposit USDC to Hyperliquid and approve the builder fee.'
+        );
+      }
+    } catch (err) {
+      app.log.error(err, 'Failed to check agent wallet status');
+      // Continue anyway - the error will be caught when opening position
+    }
+
     // Build the order payload using betBuilder
     const orderPayload = buildOrderFromSaltRequest({
       narrative,
@@ -306,14 +339,18 @@ export async function tradesRoutes(app: FastifyInstance) {
         data: updatedTrade,
       };
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+
       // Update trade as failed
       await updateTrade(app.supabase, trade.id, {
         status: 'failed',
-        pear_response: { error: String(err) },
+        pear_response: { error: errorMessage },
       });
 
       app.log.error(err, 'Narrative trade execution failed');
-      return reply.internalServerError('Trade execution failed');
+
+      // Return the actual error message to help debugging
+      return reply.internalServerError(errorMessage || 'Trade execution failed');
     }
   });
 

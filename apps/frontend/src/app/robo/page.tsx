@@ -878,7 +878,7 @@ export default function RoboPage() {
                         {run.strategy_id}
                       </p>
                       <p className="text-xs text-white/40">
-                        {new Date(run.created_at).toLocaleString()}
+                        {new Date(run.started_at).toLocaleString()}
                       </p>
                     </div>
                     <Badge
