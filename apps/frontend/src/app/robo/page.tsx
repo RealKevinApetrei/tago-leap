@@ -55,8 +55,11 @@ export default function RoboPage() {
 
     setLoading(true);
     try {
-      const acc = await saltApi.createAccount({ userWalletAddress: walletAddress });
-      setAccount(acc);
+      const response = await saltApi.createAccount({ userWalletAddress: walletAddress });
+      // Backend returns { saltAccountAddress, account }
+      // We store the account which has salt_account_address inside it
+      setAccount(response.account || response);
+      console.log('Salt account created:', response);
     } catch (err) {
       console.error('Failed to create account:', err);
       alert('Failed to create account. Please try again.');
@@ -141,11 +144,14 @@ export default function RoboPage() {
           {/* Account Info */}
           <Card>
             <div className="p-4">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-3">
                 <span className="text-sm text-white/40 font-light">Salt Account</span>
                 <Badge variant="success">Active</Badge>
               </div>
-              <p className="text-xs text-white/40 font-mono truncate">
+              <div className="mb-2">
+                <span className="text-xs text-white/60 font-light">Salt Wallet Address:</span>
+              </div>
+              <p className="text-sm text-tago-yellow-400 font-mono break-all">
                 {account.salt_account_address}
               </p>
             </div>

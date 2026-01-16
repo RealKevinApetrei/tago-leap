@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { Navigation } from '@/components/Navigation';
+import { Providers } from '@/components/Providers';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -23,10 +24,12 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${inter.className} bg-tago-black min-h-screen antialiased`}>
-        <Navigation />
-        <main className="pt-20 pb-8 px-4">
-          <div className="max-w-lg mx-auto">{children}</div>
-        </main>
+        <Providers>
+          <Navigation />
+          <main className="pt-20 pb-8 px-4">
+            <div className="max-w-lg mx-auto">{children}</div>
+          </main>
+        </Providers>
       </body>
     </html>
   );
