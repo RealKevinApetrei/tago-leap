@@ -16,8 +16,62 @@ import {
 import { getSupportedOptions, getRoutes } from '../clients/lifiClient.js';
 import { createDepositRequest } from '../clients/hyperliquidClient.js';
 import { hyperliquidConfig } from '../config/hyperliquidConfig.js';
+import { getOrCreateSaltWallet } from '../clients/saltServiceClient.js';
+
+/**
+ * Extended quote request that supports salt wallet destination
+ */
+interface ExtendedQuoteRequest extends OnboardingQuoteRequest {
+  /** If true, deposit destination will be the user's salt wallet */
+  depositToSaltWallet?: boolean;
+}
+
+/**
+ * Salt wallet response
+ */
+interface SaltWalletInfo {
+  userWalletAddress: string;
+  saltWalletAddress: string;
+  exists: boolean;
+}
 
 export async function onboardingRoutes(app: FastifyInstance) {
+  /**
+   * GET /onboard/salt-wallet/:address - Get or create salt wallet for a user
+   *
+   * This endpoint integrates with salt-service to:
+   * 1. Check if a salt wallet exists for the user
+   * 2. Create one if it doesn't exist
+   * 3. Return the salt wallet address for deposit destination
+   */
+  app.get<{
+    Params: { address: string };
+    Reply: ApiResponse<SaltWalletInfo>;
+  }>('/onboard/salt-wallet/:address', async (request, reply) => {
+    const { address } = request.params;
+
+    if (!address) {
+      return reply.badRequest('Missing wallet address');
+    }
+
+    try {
+      const saltWalletAddress = await getOrCreateSaltWallet(address);
+
+      return {
+        success: true,
+        data: {
+          userWalletAddress: address,
+          saltWalletAddress,
+          exists: true,
+        },
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to get salt wallet';
+      app.log.error(`Failed to get salt wallet for ${address}: ${errorMessage}`);
+      return reply.internalServerError(errorMessage);
+    }
+  });
+
   /**
    * GET /onboard/options - Get supported chains and tokens
    */
@@ -33,10 +87,14 @@ export async function onboardingRoutes(app: FastifyInstance) {
 
   /**
    * POST /onboard/quote - Get a quote for onboarding (bridge + deposit)
+   *
+   * Supports two deposit destinations:
+   * 1. Direct to user wallet on HyperEVM (default)
+   * 2. To user's salt wallet (when depositToSaltWallet: true)
    */
   app.post<{
-    Body: OnboardingQuoteRequest;
-    Reply: ApiResponse<OnboardingFlow>;
+    Body: ExtendedQuoteRequest;
+    Reply: ApiResponse<OnboardingFlow & { saltWalletAddress?: string }>;
   }>('/onboard/quote', async (request, reply) => {
     const {
       userWalletAddress,
@@ -44,6 +102,7 @@ export async function onboardingRoutes(app: FastifyInstance) {
       fromTokenAddress,
       amount,
       toTokenAddress,
+      depositToSaltWallet,
     } = request.body;
 
     // Validate required fields
@@ -54,7 +113,21 @@ export async function onboardingRoutes(app: FastifyInstance) {
     // Get or create user
     const user = await getOrCreateUser(app.supabase, userWalletAddress);
 
+    // If depositing to salt wallet, get/create the salt wallet address
+    let saltWalletAddress: string | undefined;
+    if (depositToSaltWallet) {
+      try {
+        saltWalletAddress = await getOrCreateSaltWallet(userWalletAddress);
+        app.log.info(`Using salt wallet ${saltWalletAddress} as deposit destination`);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Failed to get salt wallet for deposit';
+        app.log.error(`Failed to get salt wallet: ${errorMessage}`);
+        return reply.internalServerError(errorMessage);
+      }
+    }
+
     // Get route from LI.FI
+    // The destination address is either the salt wallet or user wallet
     const route = await getRoutes({
       fromChainId,
       toChainId: hyperliquidConfig.hyperEvmChainId,
@@ -75,7 +148,10 @@ export async function onboardingRoutes(app: FastifyInstance) {
 
     return {
       success: true,
-      data: flow,
+      data: {
+        ...flow,
+        saltWalletAddress,
+      },
     };
   });
 
