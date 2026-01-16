@@ -134,6 +134,8 @@ export async function onboardingRoutes(app: FastifyInstance) {
       fromTokenAddress,
       toTokenAddress,
       fromAmount: amount,
+      fromAddress: userWalletAddress,
+      toAddress: saltWalletAddress || userWalletAddress,
     });
 
     // Create onboarding flow

@@ -77,24 +77,157 @@ export interface OnboardingQuoteRequest {
   toTokenAddress: string;
 }
 
-export interface LifiRoute {
-  fromChainId: number;
-  toChainId: number;
-  fromToken: string;
-  toToken: string;
-  fromAmount: string;
-  toAmount: string;
-  estimatedGas: string;
-  steps: LifiRouteStep[];
+/** Token info with human-readable details */
+export interface TokenInfo {
+  address: string;
+  symbol: string;
+  decimals: number;
+  name?: string;
+  logoUri?: string;
+  priceUsd?: string;
 }
 
-export interface LifiRouteStep {
-  type: 'swap' | 'bridge' | 'cross';
-  tool: string;
+/** Chain info with human-readable details */
+export interface ChainInfo {
+  chainId: number;
+  name: string;
+  logoUri?: string;
+  explorerUrl?: string;
+}
+
+/** Fee breakdown for transparency */
+export interface RouteFees {
+  /** Gas cost in native token */
+  gasCostNative: string;
+  /** Gas cost in USD */
+  gasCostUsd: string;
+  /** Protocol/bridge fees in USD */
+  protocolFeeUsd: string;
+  /** Total fees in USD */
+  totalFeeUsd: string;
+}
+
+/** Detailed route with full transparency */
+export interface LifiRoute {
+  /** Unique route ID for tracking */
+  routeId: string;
+
+  /** Source chain info */
   fromChainId: number;
+  fromChain: ChainInfo;
+
+  /** Destination chain info */
   toChainId: number;
+  toChain: ChainInfo;
+
+  /** Source token */
   fromToken: string;
+  fromTokenInfo: TokenInfo;
+
+  /** Destination token */
   toToken: string;
+  toTokenInfo: TokenInfo;
+
+  /** Input amount (raw, smallest unit) */
+  fromAmount: string;
+  /** Input amount (human-readable) */
+  fromAmountFormatted: string;
+  /** Input amount in USD */
+  fromAmountUsd: string;
+
+  /** Output amount (raw, smallest unit) */
+  toAmount: string;
+  /** Output amount (human-readable) */
+  toAmountFormatted: string;
+  /** Output amount in USD */
+  toAmountUsd: string;
+
+  /** Minimum output amount after slippage */
+  toAmountMin: string;
+
+  /** Exchange rate (1 fromToken = X toToken) */
+  exchangeRate: string;
+
+  /** Slippage percentage (e.g., "0.5" for 0.5%) */
+  slippage: string;
+
+  /** Total estimated execution time in seconds */
+  estimatedDurationSeconds: number;
+  /** Human-readable ETA (e.g., "~5 minutes") */
+  estimatedDurationFormatted: string;
+
+  /** Fee breakdown */
+  fees: RouteFees;
+
+  /** Legacy gas field for backwards compatibility */
+  estimatedGas: string;
+
+  /** Detailed steps in execution order */
+  steps: LifiRouteStep[];
+
+  /** Route tags (e.g., "FASTEST", "CHEAPEST") */
+  tags?: string[];
+}
+
+/** Detailed step in a route */
+export interface LifiRouteStep {
+  /** Step index (1-based for display) */
+  stepIndex: number;
+
+  /** Step type */
+  type: 'swap' | 'bridge' | 'cross';
+
+  /** Human-readable action (e.g., "Swap ETH to USDC on Uniswap") */
+  action: string;
+
+  /** Tool/protocol used (e.g., "uniswap", "stargate", "hop") */
+  tool: string;
+  /** Tool display name */
+  toolName: string;
+  /** Tool logo URI */
+  toolLogoUri?: string;
+
+  /** Source chain */
+  fromChainId: number;
+  fromChainName: string;
+
+  /** Destination chain */
+  toChainId: number;
+  toChainName: string;
+
+  /** Source token */
+  fromToken: string;
+  fromTokenSymbol: string;
+
+  /** Destination token */
+  toToken: string;
+  toTokenSymbol: string;
+
+  /** Input amount for this step */
+  fromAmount: string;
+  fromAmountFormatted: string;
+
+  /** Output amount for this step */
+  toAmount: string;
+  toAmountFormatted: string;
+
+  /** Estimated time for this step in seconds */
+  estimatedDurationSeconds: number;
+
+  /** Fees for this step */
+  fees: {
+    gasCostUsd: string;
+    protocolFeeUsd: string;
+  };
+
+  /** Execution status for tracking */
+  status?: 'pending' | 'in_progress' | 'completed' | 'failed';
+
+  /** Transaction hash once submitted */
+  txHash?: string;
+
+  /** Explorer link for this step's transaction */
+  explorerLink?: string;
 }
 
 export interface SupportedOption {
