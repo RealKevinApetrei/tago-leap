@@ -105,11 +105,12 @@ export interface EIP712Message {
     name: string;
     version: string;
     chainId: number;
-    verifyingContract: string;
+    verifyingContract?: string;
   };
   types: Record<string, Array<{ name: string; type: string }>>;
   primaryType: string;
   message: Record<string, unknown>;
+  timestamp: number;
 }
 
 export interface AuthTokens {
@@ -122,7 +123,7 @@ export interface AuthTokens {
 export interface AuthenticatePayload {
   walletAddress: string;
   signature: string;
-  message: EIP712Message;
+  timestamp: number;
 }
 
 // AI Narrative Suggestion types

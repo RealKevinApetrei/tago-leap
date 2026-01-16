@@ -99,11 +99,20 @@ export const pearApi = {
   getTrades: (wallet: string) =>
     fetchApi<any[]>(`${config.pearServiceUrl}/trades?wallet=${wallet}`),
 
+  getTradesByAccount: (accountRef: string) =>
+    fetchApi<any[]>(`${config.pearServiceUrl}/trades?accountRef=${encodeURIComponent(accountRef)}`),
+
   // Auth endpoints
   getAuthMessage: (wallet: string) =>
-    fetchApi<any>(`${config.pearServiceUrl}/auth/message?wallet=${wallet}`),
+    fetchApi<{
+      domain: any;
+      types: any;
+      primaryType: string;
+      message: any;
+      timestamp: number;
+    }>(`${config.pearServiceUrl}/auth/message?wallet=${wallet}`),
 
-  verifyAuth: (data: { walletAddress: string; signature: string; message: any }) =>
+  verifyAuth: (data: { walletAddress: string; signature: string; timestamp: number }) =>
     fetchApi<{ authenticated: boolean }>(`${config.pearServiceUrl}/auth/verify`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -119,6 +128,21 @@ export const pearApi = {
       method: 'POST',
       body: JSON.stringify({ walletAddress }),
     }),
+
+  // Agent Wallet endpoints
+  getAgentWallet: (wallet: string) =>
+    fetchApi<{ exists: boolean; agentWalletAddress: string | null }>(
+      `${config.pearServiceUrl}/auth/agent-wallet?wallet=${wallet}`
+    ),
+
+  createAgentWallet: (walletAddress: string) =>
+    fetchApi<{ agentWalletAddress: string; message: string }>(
+      `${config.pearServiceUrl}/auth/agent-wallet`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ walletAddress }),
+      }
+    ),
 };
 
 // LI.FI Service API
@@ -190,5 +214,38 @@ export const saltApi = {
     fetchApi<any>(`${config.saltServiceUrl}/salt/accounts/${accountId}/strategies`, {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+
+  executeTrade: (
+    accountId: string,
+    data: {
+      narrativeId: string;
+      direction: 'longNarrative' | 'shortNarrative';
+      stakeUsd: number;
+      riskProfile: 'conservative' | 'standard' | 'degen';
+      mode: 'pair' | 'basket';
+    }
+  ) =>
+    fetchApi<any>(`${config.saltServiceUrl}/salt/accounts/${accountId}/trade`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getAccountTrades: (accountId: string) =>
+    fetchApi<any[]>(`${config.saltServiceUrl}/salt/accounts/${accountId}/trades`),
+
+  getStrategyRuns: (accountId: string, limit?: number) =>
+    fetchApi<any[]>(
+      `${config.saltServiceUrl}/salt/accounts/${accountId}/strategy-runs${limit ? `?limit=${limit}` : ''}`
+    ),
+
+  updateStrategy: (
+    accountId: string,
+    strategyId: string,
+    active: boolean
+  ) =>
+    fetchApi<any>(`${config.saltServiceUrl}/salt/accounts/${accountId}/strategies`, {
+      method: 'POST',
+      body: JSON.stringify({ strategyId, active }),
     }),
 };

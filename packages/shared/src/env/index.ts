@@ -11,6 +11,7 @@ const baseEnvSchema = z.object({
 export const pearEnvSchema = baseEnvSchema.extend({
   PEAR_SERVICE_PORT: z.coerce.number().default(3001),
   PEAR_API_BASE_URL: z.string().url().default('https://hl-v2.pearprotocol.io'),
+  PEAR_CLIENT_ID: z.string().min(1).default('APITRADER'),
   ANTHROPIC_API_KEY: z.string().min(1),
 });
 

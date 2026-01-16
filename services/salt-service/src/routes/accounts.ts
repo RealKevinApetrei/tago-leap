@@ -6,6 +6,8 @@ import type {
   SaltStrategy,
   SaltPolicyInput,
   CreateStrategyRequest,
+  Trade,
+  StrategyRun,
 } from '@tago-leap/shared/types';
 import { getOrCreateUser } from '../domain/userRepo.js';
 import {
@@ -17,10 +19,13 @@ import {
   getLatestPolicy,
   createSaltStrategy,
   getStrategiesByAccountId,
+  getStrategyRunsByAccountId,
 } from '../domain/saltRepo.js';
 import { getOrCreateSaltWallet } from '../domain/saltWalletService.js';
 import { validatePolicy } from '../domain/policyTypes.js';
 import { getAllStrategies, getStrategyById } from '../domain/strategyTypes.js';
+import { executeStrategyTrade, ExecuteTradeParams, TradeExecutionResult } from '../domain/strategyExecutor.js';
+import { getTradesBySaltAccount } from '../clients/pearServiceClient.js';
 
 interface AccountWithDetails {
   account: SaltAccount;
@@ -233,5 +238,137 @@ export async function accountsRoutes(app: FastifyInstance) {
       success: true,
       data: strategy,
     };
+  });
+
+  /**
+   * POST /salt/accounts/:id/trade - Execute a trade for a Salt account
+   *
+   * This endpoint:
+   * 1. Validates the user is authenticated with Pear Protocol
+   * 2. Validates the trade params via pear-service
+   * 3. Checks against the account's policy
+   * 4. Executes the trade via pear-service with source='salt'
+   */
+  app.post<{
+    Params: { id: string };
+    Body: ExecuteTradeParams;
+    Reply: ApiResponse<TradeExecutionResult>;
+  }>('/accounts/:id/trade', async (request, reply) => {
+    const { id } = request.params;
+    const params = request.body;
+
+    // Validate required fields
+    if (!params.narrativeId || !params.direction || !params.stakeUsd || !params.riskProfile || !params.mode) {
+      return reply.badRequest('Missing required fields: narrativeId, direction, stakeUsd, riskProfile, mode');
+    }
+
+    // Validate direction
+    if (params.direction !== 'longNarrative' && params.direction !== 'shortNarrative') {
+      return reply.badRequest('direction must be "longNarrative" or "shortNarrative"');
+    }
+
+    // Validate riskProfile
+    if (!['conservative', 'standard', 'degen'].includes(params.riskProfile)) {
+      return reply.badRequest('riskProfile must be "conservative", "standard", or "degen"');
+    }
+
+    // Validate mode
+    if (params.mode !== 'pair' && params.mode !== 'basket') {
+      return reply.badRequest('mode must be "pair" or "basket"');
+    }
+
+    // Validate stakeUsd
+    if (params.stakeUsd < 1) {
+      return reply.badRequest('Minimum stake is $1 USD');
+    }
+
+    try {
+      const result = await executeStrategyTrade(app.supabase, id, params);
+
+      if (!result.success) {
+        // Return 400 for policy violations, 401 for auth issues
+        if (result.error?.includes('not authenticated')) {
+          return reply.unauthorized(result.error);
+        }
+        if (result.error?.includes('Policy violation')) {
+          return reply.code(400).send({
+            success: false,
+            error: { code: 'POLICY_VIOLATION', message: result.error },
+            data: result,
+          });
+        }
+        return reply.badRequest(result.error || 'Trade execution failed');
+      }
+
+      return {
+        success: true,
+        data: result,
+      };
+    } catch (err) {
+      console.error('[POST /accounts/:id/trade] Error:', err);
+      return reply.internalServerError(
+        err instanceof Error ? err.message : 'Failed to execute trade'
+      );
+    }
+  });
+
+  /**
+   * GET /salt/accounts/:id/trades - Get trade history for a Salt account
+   */
+  app.get<{
+    Params: { id: string };
+    Reply: ApiResponse<Trade[]>;
+  }>('/accounts/:id/trades', async (request, reply) => {
+    const { id } = request.params;
+
+    // Verify account exists
+    const account = await getSaltAccountById(app.supabase, id);
+    if (!account) {
+      return reply.notFound('Salt account not found');
+    }
+
+    try {
+      const trades = await getTradesBySaltAccount(account.salt_account_address);
+      return {
+        success: true,
+        data: trades,
+      };
+    } catch (err) {
+      console.error('[GET /accounts/:id/trades] Error:', err);
+      return reply.internalServerError(
+        err instanceof Error ? err.message : 'Failed to get trades'
+      );
+    }
+  });
+
+  /**
+   * GET /salt/accounts/:id/strategy-runs - Get recent strategy runs for a Salt account
+   */
+  app.get<{
+    Params: { id: string };
+    Querystring: { limit?: string };
+    Reply: ApiResponse<StrategyRun[]>;
+  }>('/accounts/:id/strategy-runs', async (request, reply) => {
+    const { id } = request.params;
+    const limit = parseInt(request.query.limit || '20', 10);
+
+    // Verify account exists
+    const account = await getSaltAccountById(app.supabase, id);
+    if (!account) {
+      return reply.notFound('Salt account not found');
+    }
+
+    try {
+      const runs = await getStrategyRunsByAccountId(app.supabase, id, limit);
+      return {
+        success: true,
+        data: runs,
+      };
+    } catch (err) {
+      console.error('[GET /accounts/:id/strategy-runs] Error:', err);
+      return reply.internalServerError(
+        err instanceof Error ? err.message : 'Failed to get strategy runs'
+      );
+    }
   });
 }
