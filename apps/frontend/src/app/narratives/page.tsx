@@ -91,14 +91,6 @@ export default function NarrativesPage() {
     }
   };
 
-  const confidenceColor = suggestion
-    ? suggestion.confidence >= 0.7
-      ? 'text-green-400'
-      : suggestion.confidence >= 0.4
-      ? 'text-yellow-400'
-      : 'text-red-400'
-    : '';
-
   return (
     <div className="space-y-6">
       <SwapPanel title="AI Trade Builder" subtitle="Describe your thesis, get a pair trade">
@@ -148,92 +140,146 @@ export default function NarrativesPage() {
           </div>
         )}
 
-        {/* AI Suggestion */}
+        {/* AI Suggestion - Abstract Visual */}
         {suggestion && (
           <>
-            <Card variant="default">
-              <div className="p-4 space-y-4">
-                {/* Header */}
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="text-lg font-medium text-white">{suggestion.narrative}</h3>
-                    <p className="text-sm text-white/60 font-light mt-1">{suggestion.rationale}</p>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <Badge variant={suggestion.confidence >= 0.7 ? 'success' : suggestion.confidence >= 0.4 ? 'warning' : 'error'}>
-                      {Math.round(suggestion.confidence * 100)}% confidence
-                    </Badge>
+            {/* Hero Card - VS Battle Style */}
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-white/[0.05] to-transparent border border-white/[0.08] p-6">
+              {/* Background glow effects */}
+              <div className="absolute top-0 left-0 w-32 h-32 bg-green-500/20 blur-3xl rounded-full -translate-x-1/2 -translate-y-1/2" />
+              <div className="absolute bottom-0 right-0 w-32 h-32 bg-red-500/20 blur-3xl rounded-full translate-x-1/2 translate-y-1/2" />
+
+              {/* Main VS Display */}
+              <div className="relative flex items-center justify-between gap-4">
+                {/* Long Side */}
+                <div className="flex-1 text-center">
+                  <div className="text-xs uppercase tracking-widest text-green-400/60 mb-2">Long</div>
+                  <div className="flex flex-wrap justify-center gap-1.5">
+                    {suggestion.longAssets.map((asset) => (
+                      <span
+                        key={asset.asset}
+                        className="px-3 py-1.5 bg-green-500/10 border border-green-500/30 rounded-full text-green-400 text-sm font-medium"
+                      >
+                        {asset.asset}
+                      </span>
+                    ))}
                   </div>
                 </div>
 
-                {/* Warnings */}
-                {suggestion.warnings && suggestion.warnings.length > 0 && (
-                  <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                    <p className="text-xs text-yellow-400 font-light">
-                      {suggestion.warnings.join('. ')}
-                    </p>
-                  </div>
-                )}
-
-                {/* Long Assets */}
-                <div className="space-y-2">
-                  <h4 className="text-sm font-medium text-green-400 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-green-400"></span>
-                    Long Positions
-                  </h4>
-                  {suggestion.longAssets.map((asset, i) => (
-                    <div key={asset.asset} className="flex items-center gap-3 p-3 bg-green-500/5 rounded-lg border border-green-500/10">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-white">{asset.asset}</p>
-                        <p className="text-xs text-white/50 font-light">{asset.name}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={Math.round(asset.weight * 100)}
-                          onChange={(e) => updateAssetWeight('long', i, parseInt(e.target.value) / 100)}
-                          className="w-20 accent-green-400"
-                        />
-                        <span className="text-sm text-white/70 w-12 text-right">
-                          {Math.round(asset.weight * 100)}%
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                {/* VS Divider */}
+                <div className="flex flex-col items-center px-4">
+                  <div className="w-px h-8 bg-gradient-to-b from-green-500/50 to-transparent" />
+                  <span className="text-white/20 text-xs font-bold my-2">VS</span>
+                  <div className="w-px h-8 bg-gradient-to-t from-red-500/50 to-transparent" />
                 </div>
 
-                {/* Short Assets */}
-                <div className="space-y-2">
-                  <h4 className="text-sm font-medium text-red-400 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-red-400"></span>
-                    Short Positions
-                  </h4>
-                  {suggestion.shortAssets.map((asset, i) => (
-                    <div key={asset.asset} className="flex items-center gap-3 p-3 bg-red-500/5 rounded-lg border border-red-500/10">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-white">{asset.asset}</p>
-                        <p className="text-xs text-white/50 font-light">{asset.name}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={Math.round(asset.weight * 100)}
-                          onChange={(e) => updateAssetWeight('short', i, parseInt(e.target.value) / 100)}
-                          className="w-20 accent-red-400"
-                        />
-                        <span className="text-sm text-white/70 w-12 text-right">
-                          {Math.round(asset.weight * 100)}%
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                {/* Short Side */}
+                <div className="flex-1 text-center">
+                  <div className="text-xs uppercase tracking-widest text-red-400/60 mb-2">Short</div>
+                  <div className="flex flex-wrap justify-center gap-1.5">
+                    {suggestion.shortAssets.map((asset) => (
+                      <span
+                        key={asset.asset}
+                        className="px-3 py-1.5 bg-red-500/10 border border-red-500/30 rounded-full text-red-400 text-sm font-medium"
+                      >
+                        {asset.asset}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </Card>
+
+              {/* Confidence Bar */}
+              <div className="mt-6 flex items-center gap-3">
+                <div className="flex-1 h-1.5 bg-white/[0.05] rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      suggestion.confidence >= 0.7
+                        ? 'bg-gradient-to-r from-green-500 to-emerald-400'
+                        : suggestion.confidence >= 0.4
+                        ? 'bg-gradient-to-r from-yellow-500 to-amber-400'
+                        : 'bg-gradient-to-r from-red-500 to-rose-400'
+                    }`}
+                    style={{ width: `${suggestion.confidence * 100}%` }}
+                  />
+                </div>
+                <span className="text-xs text-white/40 tabular-nums">{Math.round(suggestion.confidence * 100)}%</span>
+              </div>
+
+              {/* Minimal Warning Indicator */}
+              {suggestion.warnings && suggestion.warnings.length > 0 && (
+                <div className="mt-3 flex items-center gap-2 text-yellow-400/60">
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-[10px] uppercase tracking-wider">volatile pair</span>
+                </div>
+              )}
+            </div>
+
+            {/* Rationale callout - below card with arrow pointing up */}
+            <details className="group/rationale relative">
+              {/* Arrow pointing up */}
+              <div className="absolute -top-2 right-8">
+                <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-white/10" />
+              </div>
+              {/* Summary - always visible */}
+              <summary className="bg-gradient-to-br from-white/[0.04] to-white/[0.02] border border-white/[0.08] rounded-xl p-3 flex items-center gap-3 cursor-pointer list-none hover:from-white/[0.06] transition-all">
+                <div className="w-6 h-6 rounded-full bg-tago-yellow-400/10 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-3 h-3 text-tago-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zM8 16v-1h4v1a2 2 0 11-4 0zM12 14c.015-.34.208-.646.477-.859a4 4 0 10-4.954 0c.27.213.462.519.476.859h4.002z" />
+                  </svg>
+                </div>
+                <span className="text-xs text-white/50 flex-1">{suggestion.narrative}</span>
+                <svg className="w-4 h-4 text-white/30 transition-transform group-open/rationale:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </summary>
+              {/* Full rationale - shown on expand */}
+              <div className="mt-2 px-4 py-3 bg-white/[0.02] rounded-lg border border-white/[0.05]">
+                <p className="text-sm text-white/60 leading-relaxed">{suggestion.rationale}</p>
+              </div>
+            </details>
+
+            {/* Expandable Details */}
+            <details className="group">
+              <summary className="flex items-center gap-2 text-xs text-white/30 cursor-pointer hover:text-white/50 transition-colors">
+                <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                adjust weights
+              </summary>
+              <div className="mt-3 space-y-2">
+                {suggestion.longAssets.map((asset, i) => (
+                  <div key={asset.asset} className="flex items-center gap-3 text-sm">
+                    <span className="w-16 text-green-400/70">{asset.asset}</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={Math.round(asset.weight * 100)}
+                      onChange={(e) => updateAssetWeight('long', i, parseInt(e.target.value) / 100)}
+                      className="flex-1 accent-green-400 h-1"
+                    />
+                    <span className="w-10 text-right text-white/40 tabular-nums">{Math.round(asset.weight * 100)}%</span>
+                  </div>
+                ))}
+                {suggestion.shortAssets.map((asset, i) => (
+                  <div key={asset.asset} className="flex items-center gap-3 text-sm">
+                    <span className="w-16 text-red-400/70">{asset.asset}</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={Math.round(asset.weight * 100)}
+                      onChange={(e) => updateAssetWeight('short', i, parseInt(e.target.value) / 100)}
+                      className="flex-1 accent-red-400 h-1"
+                    />
+                    <span className="w-10 text-right text-white/40 tabular-nums">{Math.round(asset.weight * 100)}%</span>
+                  </div>
+                ))}
+              </div>
+            </details>
 
             {/* Trade Configuration */}
             <div className="grid grid-cols-2 gap-4">

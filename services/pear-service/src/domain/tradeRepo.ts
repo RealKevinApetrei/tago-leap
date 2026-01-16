@@ -1,5 +1,5 @@
 import type { SupabaseAdminClient } from '@tago-leap/shared/supabase';
-import type { Trade, TablesInsert } from '@tago-leap/shared/types';
+import type { Trade, TablesInsert, TradeFilters, TradeSource } from '@tago-leap/shared/types';
 
 type TradeInsert = TablesInsert<'trades'>;
 
@@ -95,4 +95,61 @@ export async function updateTrade(
   }
 
   return data;
+}
+
+/**
+ * Get trades by Salt account reference.
+ */
+export async function getTradesByAccountRef(
+  supabase: SupabaseAdminClient,
+  accountRef: string
+): Promise<Trade[]> {
+  const { data, error } = await supabase
+    .from('trades')
+    .select('*')
+    .eq('account_ref', accountRef)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw new Error(`Failed to get trades by account ref: ${error.message}`);
+  }
+
+  return data || [];
+}
+
+/**
+ * Get trades with flexible filters.
+ */
+export async function getTradesWithFilters(
+  supabase: SupabaseAdminClient,
+  filters: TradeFilters
+): Promise<Trade[]> {
+  let query = supabase.from('trades').select(`
+    *,
+    users!inner(wallet_address)
+  `);
+
+  if (filters.walletAddress) {
+    query = query.eq('users.wallet_address', filters.walletAddress.toLowerCase());
+  }
+
+  if (filters.accountRef) {
+    query = query.eq('account_ref', filters.accountRef);
+  }
+
+  if (filters.source) {
+    query = query.eq('source', filters.source);
+  }
+
+  if (filters.status) {
+    query = query.eq('status', filters.status);
+  }
+
+  const { data, error } = await query.order('created_at', { ascending: false });
+
+  if (error) {
+    throw new Error(`Failed to get trades with filters: ${error.message}`);
+  }
+
+  return data || [];
 }

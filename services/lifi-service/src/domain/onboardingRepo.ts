@@ -40,7 +40,12 @@ export async function getOnboardingFlowById(
     .eq('id', flowId)
     .single();
 
-  if (error && error.code !== 'PGRST116') {
+  if (error) {
+    // PGRST116: no rows found
+    // 22P02: invalid UUID format
+    if (error.code === 'PGRST116' || error.code === '22P02') {
+      return null;
+    }
     throw new Error(`Failed to get onboarding flow: ${error.message}`);
   }
 

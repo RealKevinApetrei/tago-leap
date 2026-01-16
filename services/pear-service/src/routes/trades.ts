@@ -8,11 +8,15 @@ import type {
   NarrativeSuggestion,
   SuggestNarrativeRequest,
   ExecuteTradeRequest,
+  ExecuteNarrativeTradeRequest,
+  ValidateTradeResponse,
+  TradeFilters,
+  TradeSource,
   PearPosition,
   OrderResponse,
 } from '@tago-leap/shared/types';
 import { getOrCreateUser } from '../domain/userRepo.js';
-import { createTrade, getTradesByWallet, getTradeById, updateTrade } from '../domain/tradeRepo.js';
+import { createTrade, getTradesByWallet, getTradeById, updateTrade, getTradesWithFilters, getTradesByAccountRef } from '../domain/tradeRepo.js';
 import { suggestNarrative, validateModifiedSuggestion } from '../domain/narrativeService.js';
 import {
   getMarkets,
@@ -21,6 +25,9 @@ import {
   closePosition,
 } from '../clients/pearClient.js';
 import { getValidAccessToken } from '../domain/authRepo.js';
+import { getNarrativeById } from '../domain/narratives.js';
+import { buildOrderFromSaltRequest, computeNotional, type SaltDirection, type SaltRiskProfile, type SaltMode } from '../domain/betBuilder.js';
+import { verifySaltAccountOwnership } from '../domain/saltAccountRepo.js';
 
 export async function tradesRoutes(app: FastifyInstance) {
   /**
@@ -81,7 +88,8 @@ export async function tradesRoutes(app: FastifyInstance) {
   });
 
   /**
-   * POST /bets/execute - Execute a trade via Pear Protocol
+   * POST /bets/execute - Execute a trade via Pear Protocol (direct asset execution)
+   * Supports Salt integration via accountRef and source fields.
    */
   app.post<{
     Body: ExecuteTradeRequest;
@@ -94,6 +102,8 @@ export async function tradesRoutes(app: FastifyInstance) {
       stakeUsd,
       leverage,
       slippage = 0.01,
+      accountRef,
+      source = 'user',
     } = request.body;
 
     // Validate required fields
@@ -109,10 +119,27 @@ export async function tradesRoutes(app: FastifyInstance) {
       return reply.badRequest('Leverage must be between 1 and 100');
     }
 
+    // If source is 'salt', require accountRef
+    if (source === 'salt' && !accountRef) {
+      return reply.badRequest('accountRef is required when source is "salt"');
+    }
+
+    // If this is a Salt-driven trade, verify the user owns the Salt account
+    if (source === 'salt' && accountRef) {
+      const isOwner = await verifySaltAccountOwnership(
+        app.supabase,
+        accountRef,
+        userWalletAddress
+      );
+      if (!isOwner) {
+        return reply.forbidden('User does not own this Salt account');
+      }
+    }
+
     // Get or create user
     const user = await getOrCreateUser(app.supabase, userWalletAddress);
 
-    // Get valid access token
+    // Get valid access token (using user's EOA auth)
     const accessToken = await getValidAccessToken(app.supabase, userWalletAddress);
     if (!accessToken) {
       return reply.unauthorized('Authentication required. Please sign in first.');
@@ -128,7 +155,7 @@ export async function tradesRoutes(app: FastifyInstance) {
       shortAssets: shortAssets.map(a => ({ asset: a.asset, weight: a.weight })),
     };
 
-    // Create pending trade record
+    // Create pending trade record with Salt metadata
     const trade = await createTrade(app.supabase, user.id, {
       narrative_id: 'custom',
       direction: 'long',
@@ -137,6 +164,8 @@ export async function tradesRoutes(app: FastifyInstance) {
       mode: 'live',
       pear_order_payload: orderPayload as unknown as Json,
       status: 'pending',
+      source,
+      account_ref: accountRef ?? null,
     });
 
     try {
@@ -163,6 +192,226 @@ export async function tradesRoutes(app: FastifyInstance) {
       app.log.error(err, 'Trade execution failed');
       return reply.internalServerError('Trade execution failed');
     }
+  });
+
+  /**
+   * POST /bets/execute-narrative - Execute a narrative-based trade (for Salt)
+   * Uses narrativeId to resolve assets via betBuilder.
+   */
+  app.post<{
+    Body: ExecuteNarrativeTradeRequest;
+    Reply: ApiResponse<Trade>;
+  }>('/bets/execute-narrative', async (request, reply) => {
+    const {
+      userWalletAddress,
+      narrativeId,
+      direction,
+      stakeUsd,
+      riskProfile,
+      mode,
+      accountRef,
+      source = accountRef ? 'salt' : 'user',
+    } = request.body;
+
+    // Validate required fields
+    if (!userWalletAddress || !narrativeId || !direction || !stakeUsd || !riskProfile || !mode) {
+      return reply.badRequest('Missing required fields');
+    }
+
+    if (stakeUsd < 1) {
+      return reply.badRequest('Minimum stake is $1 USD');
+    }
+
+    // Validate direction
+    if (direction !== 'longNarrative' && direction !== 'shortNarrative') {
+      return reply.badRequest('direction must be "longNarrative" or "shortNarrative"');
+    }
+
+    // Validate riskProfile
+    if (!['conservative', 'standard', 'degen'].includes(riskProfile)) {
+      return reply.badRequest('riskProfile must be "conservative", "standard", or "degen"');
+    }
+
+    // Validate mode
+    if (mode !== 'pair' && mode !== 'basket') {
+      return reply.badRequest('mode must be "pair" or "basket"');
+    }
+
+    // If source is 'salt', require accountRef
+    if (source === 'salt' && !accountRef) {
+      return reply.badRequest('accountRef is required when source is "salt"');
+    }
+
+    // If this is a Salt-driven trade, verify the user owns the Salt account
+    if (source === 'salt' && accountRef) {
+      const isOwner = await verifySaltAccountOwnership(
+        app.supabase,
+        accountRef,
+        userWalletAddress
+      );
+      if (!isOwner) {
+        return reply.forbidden('User does not own this Salt account');
+      }
+    }
+
+    // Get narrative by ID
+    const narrative = getNarrativeById(narrativeId);
+    if (!narrative) {
+      return reply.badRequest(`Unknown narrative: ${narrativeId}`);
+    }
+
+    // Get or create user
+    const user = await getOrCreateUser(app.supabase, userWalletAddress);
+
+    // Get valid access token (using user's EOA auth)
+    const accessToken = await getValidAccessToken(app.supabase, userWalletAddress);
+    if (!accessToken) {
+      return reply.unauthorized('Authentication required. Please sign in first.');
+    }
+
+    // Build the order payload using betBuilder
+    const orderPayload = buildOrderFromSaltRequest({
+      narrative,
+      direction: direction as SaltDirection,
+      stakeUsd,
+      riskProfile: riskProfile as SaltRiskProfile,
+      mode: mode as SaltMode,
+    });
+
+    // Create pending trade record with Salt metadata
+    const trade = await createTrade(app.supabase, user.id, {
+      narrative_id: narrativeId,
+      direction: direction === 'longNarrative' ? 'long' : 'short',
+      stake_usd: stakeUsd,
+      risk_profile: riskProfile,
+      mode,
+      pear_order_payload: orderPayload as unknown as Json,
+      status: 'pending',
+      source,
+      account_ref: accountRef ?? null,
+    });
+
+    try {
+      // Execute trade via Pear API
+      const pearResponse = await openPosition(accessToken, orderPayload);
+
+      // Update trade with response
+      const updatedTrade = await updateTrade(app.supabase, trade.id, {
+        status: pearResponse.status === 'filled' ? 'completed' : 'failed',
+        pear_response: pearResponse as unknown as Json,
+      });
+
+      return {
+        success: true,
+        data: updatedTrade,
+      };
+    } catch (err) {
+      // Update trade as failed
+      await updateTrade(app.supabase, trade.id, {
+        status: 'failed',
+        pear_response: { error: String(err) },
+      });
+
+      app.log.error(err, 'Narrative trade execution failed');
+      return reply.internalServerError('Trade execution failed');
+    }
+  });
+
+  /**
+   * POST /bets/validate - Dry-run validation for narrative trades
+   * Returns computed payload without executing, so Salt can pre-check against its policy.
+   */
+  app.post<{
+    Body: ExecuteNarrativeTradeRequest;
+    Reply: ApiResponse<ValidateTradeResponse>;
+  }>('/bets/validate', async (request, reply) => {
+    const {
+      narrativeId,
+      direction,
+      stakeUsd,
+      riskProfile,
+      mode,
+    } = request.body;
+
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    // Validate required fields
+    if (!narrativeId) errors.push('narrativeId is required');
+    if (!direction) errors.push('direction is required');
+    if (!stakeUsd) errors.push('stakeUsd is required');
+    if (!riskProfile) errors.push('riskProfile is required');
+    if (!mode) errors.push('mode is required');
+
+    if (stakeUsd && stakeUsd < 1) {
+      errors.push('Minimum stake is $1 USD');
+    }
+
+    // Validate direction
+    if (direction && direction !== 'longNarrative' && direction !== 'shortNarrative') {
+      errors.push('direction must be "longNarrative" or "shortNarrative"');
+    }
+
+    // Validate riskProfile
+    if (riskProfile && !['conservative', 'standard', 'degen'].includes(riskProfile)) {
+      errors.push('riskProfile must be "conservative", "standard", or "degen"');
+    }
+
+    // Validate mode
+    if (mode && mode !== 'pair' && mode !== 'basket') {
+      errors.push('mode must be "pair" or "basket"');
+    }
+
+    // Get narrative by ID
+    const narrative = narrativeId ? getNarrativeById(narrativeId) : null;
+    if (narrativeId && !narrative) {
+      errors.push(`Unknown narrative: ${narrativeId}`);
+    }
+
+    if (errors.length > 0) {
+      return {
+        success: true,
+        data: {
+          valid: false,
+          errors,
+          warnings,
+        },
+      };
+    }
+
+    // Build the computed payload
+    const orderPayload = buildOrderFromSaltRequest({
+      narrative: narrative!,
+      direction: direction as SaltDirection,
+      stakeUsd,
+      riskProfile: riskProfile as SaltRiskProfile,
+      mode: mode as SaltMode,
+    });
+
+    const estimatedNotional = computeNotional(stakeUsd, orderPayload.leverage);
+
+    // Add warnings for high leverage or large notional
+    if (orderPayload.leverage >= 5) {
+      warnings.push(`High leverage (${orderPayload.leverage}x) - consider risk carefully`);
+    }
+    if (estimatedNotional > 10000) {
+      warnings.push(`Large notional position ($${estimatedNotional.toFixed(2)})`);
+    }
+
+    return {
+      success: true,
+      data: {
+        valid: true,
+        errors: [],
+        warnings,
+        computedPayload: {
+          longAssets: orderPayload.longAssets,
+          shortAssets: orderPayload.shortAssets,
+          leverage: orderPayload.leverage,
+          estimatedNotional,
+        },
+      },
+    };
   });
 
   /**
@@ -228,19 +477,38 @@ export async function tradesRoutes(app: FastifyInstance) {
   });
 
   /**
-   * GET /trades - Get trades by wallet address
+   * GET /trades - Get trades with flexible filters
+   * Supports filtering by wallet, accountRef (Salt account), source, and status.
    */
   app.get<{
-    Querystring: { wallet?: string };
+    Querystring: { wallet?: string; accountRef?: string; source?: TradeSource; status?: string };
     Reply: ApiResponse<Trade[]>;
   }>('/trades', async (request, reply) => {
-    const { wallet } = request.query;
+    const { wallet, accountRef, source, status } = request.query;
 
-    if (!wallet) {
-      return reply.badRequest('Missing wallet query parameter');
+    // Require at least one filter
+    if (!wallet && !accountRef) {
+      return reply.badRequest('Either wallet or accountRef query parameter is required');
     }
 
-    const trades = await getTradesByWallet(app.supabase, wallet);
+    // If only accountRef is provided, use the optimized query
+    if (accountRef && !wallet) {
+      const trades = await getTradesByAccountRef(app.supabase, accountRef);
+      return {
+        success: true,
+        data: trades,
+      };
+    }
+
+    // Use flexible filters
+    const filters: TradeFilters = {
+      walletAddress: wallet,
+      accountRef,
+      source,
+      status,
+    };
+
+    const trades = await getTradesWithFilters(app.supabase, filters);
 
     return {
       success: true,
