@@ -4,6 +4,9 @@ import type { Database, Tables, TablesInsert, TablesUpdate, Json } from './datab
 // Re-export database types
 export type { Database, Tables, TablesInsert, TablesUpdate, Json };
 
+// Re-export Pear Protocol types
+export * from './pear.js';
+
 // Convenience type aliases for table rows
 export type User = Tables<'users'>;
 export type Trade = Tables<'trades'>;

@@ -1,0 +1,159 @@
+// Pear Protocol API Types
+
+// Asset types from Pear API
+export interface PairAssetDto {
+  asset: string;
+  weight?: number;
+}
+
+// Market/pair group item from Pear API
+export interface ActiveAssetGroupItem {
+  longAssets: PairAssetDto[];
+  shortAssets: PairAssetDto[];
+  openInterest: string;
+  volume: string;
+  ratio?: string;
+  prevRatio?: string;
+  change24h?: string;
+  weightedRatio?: string;
+  weightedPrevRatio?: string;
+  weightedChange24h?: string;
+  netFunding: string;
+}
+
+// Raw response from Pear API /market endpoint
+export interface ActiveAssetsResponse {
+  active: ActiveAssetGroupItem[];
+  topGainers: ActiveAssetGroupItem[];
+  topLosers: ActiveAssetGroupItem[];
+  highlighted: ActiveAssetGroupItem[];
+  watchlist: ActiveAssetGroupItem[];
+}
+
+// Our internal market type (flattened for easier use)
+export interface PearMarket {
+  longAssets: PairAssetDto[];
+  shortAssets: PairAssetDto[];
+  volume?: string;
+  ratio?: string;
+  change24h?: string;
+  openInterest?: string;
+}
+
+// Wrapper response we return from our API
+export interface MarketsResponse {
+  markets: PearMarket[];
+  raw?: ActiveAssetsResponse;
+}
+
+export interface GetMarketsParams {
+  pageSize?: number;
+  page?: number;
+  active?: boolean;
+}
+
+// Position types
+export interface PearPositionAsset {
+  asset: string;
+  weight: number;
+  size: number;
+  entryPrice: number;
+  currentPrice: number;
+}
+
+export interface PearPosition {
+  id: string;
+  longAssets: PearPositionAsset[];
+  shortAssets: PearPositionAsset[];
+  leverage: number;
+  usdValue: number;
+  pnl: number;
+  pnlPercent: number;
+  status: 'open' | 'closed' | 'liquidated';
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Order types
+export interface OpenPositionPayload {
+  slippage: number;
+  executionType: 'market' | 'limit';
+  leverage: number;
+  usdValue: number;
+  longAssets: Array<{ asset: string; weight: number }>;
+  shortAssets: Array<{ asset: string; weight: number }>;
+}
+
+export interface OrderFill {
+  asset: string;
+  side: 'long' | 'short';
+  price: number;
+  size: number;
+}
+
+export interface OrderResponse {
+  orderId: string;
+  status: 'pending' | 'filled' | 'rejected' | 'cancelled';
+  fills?: OrderFill[];
+  error?: string;
+  timestamp: string;
+}
+
+// Authentication types
+export interface EIP712Message {
+  domain: {
+    name: string;
+    version: string;
+    chainId: number;
+    verifyingContract: string;
+  };
+  types: Record<string, Array<{ name: string; type: string }>>;
+  primaryType: string;
+  message: Record<string, unknown>;
+}
+
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+  accessTokenExpiresAt: Date;
+  refreshTokenExpiresAt: Date;
+}
+
+export interface AuthenticatePayload {
+  walletAddress: string;
+  signature: string;
+  message: EIP712Message;
+}
+
+// AI Narrative Suggestion types
+export interface NarrativeSuggestionAsset {
+  asset: string;
+  weight: number;
+  name: string;
+  rationale?: string;
+}
+
+export interface NarrativeSuggestion {
+  narrative: string;
+  rationale: string;
+  longAssets: NarrativeSuggestionAsset[];
+  shortAssets: NarrativeSuggestionAsset[];
+  confidence: number;
+  suggestedLeverage: number;
+  suggestedStakeUsd: number;
+  warnings?: string[];
+}
+
+export interface SuggestNarrativeRequest {
+  prompt: string;
+}
+
+// New execute trade request (for real Pear API)
+export interface ExecuteTradeRequest {
+  userWalletAddress: string;
+  longAssets: Array<{ asset: string; weight: number }>;
+  shortAssets: Array<{ asset: string; weight: number }>;
+  stakeUsd: number;
+  leverage: number;
+  slippage?: number;
+}
