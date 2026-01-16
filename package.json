@@ -1,0 +1,24 @@
+{
+  "name": "tago-leap",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "clean": "turbo clean && rm -rf node_modules",
+    "dev:frontend": "turbo dev --filter=frontend",
+    "dev:pear": "turbo dev --filter=pear-service",
+    "dev:lifi": "turbo dev --filter=lifi-service",
+    "dev:salt": "turbo dev --filter=salt-service"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}
