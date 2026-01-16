@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 
 const navItems = [
@@ -18,8 +19,14 @@ export function Navigation() {
         <div className="flex items-center justify-between">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-tago-yellow-400 to-tago-yellow-500 flex items-center justify-center shadow-lg shadow-tago-yellow-500/20 group-hover:shadow-tago-yellow-500/30 transition-shadow">
-              <span className="text-black font-semibold text-sm">TL</span>
+            <div className="relative w-9 h-9 rounded-lg overflow-hidden shadow-lg shadow-tago-yellow-500/20 group-hover:shadow-tago-yellow-500/30 transition-shadow">
+              <Image
+                src="/logo.png"
+                alt="TAGO Leap"
+                fill
+                className="object-cover"
+                priority
+              />
             </div>
             <div className="flex flex-col">
               <span className="text-base font-light text-white tracking-wide">
