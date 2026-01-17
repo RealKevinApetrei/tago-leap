@@ -12,7 +12,6 @@ import { TradeControlPanel } from './TradeControlPanel';
 import { XListSelector, type CategoryFilter } from './XListSelector';
 import { useSocialTrade, SocialTradeProvider } from '@/contexts/SocialTradeContext';
 import { useUnifiedSetupContext } from '@/contexts/UnifiedSetupContext';
-import { ConnectToTradeModal } from '@/components/ConnectToTradeModal';
 import { saltApi, NarrativeSuggestion } from '@/lib/api';
 
 interface SocialTradingTabProps {
@@ -53,14 +52,12 @@ function SocialTradingContent({
   } = useSocialTrade();
 
   // Use unified setup context
+  // On the robo page, we assume setup (steps 1-5) is already complete
+  // Users only need to connect X here
   const {
     xAccount,
     isXConnected,
-    isFullyReady,
-    isSetupComplete,
     isConnectingX,
-    isRunning: isRunningSetup,
-    openSetupModal,
     connectX,
   } = useUnifiedSetupContext();
 
@@ -261,11 +258,7 @@ function SocialTradingContent({
   );
 
   // Bottom panel - Trade controls
-  // If setup (steps 1-5) is complete but X not connected, go directly to X OAuth
-  // Otherwise, open the setup modal
-  const handleConnectAction = isSetupComplete && !isXConnected ? connectX : openSetupModal;
-  const isConnecting = isSetupComplete && !isXConnected ? isConnectingX : isRunningSetup;
-
+  // On this page, setup is already complete - only X connection is needed
   const bottomPanel = (
     <TradeControlPanel
       suggestion={suggestion}
@@ -280,27 +273,23 @@ function SocialTradingContent({
       onExecute={handleExecute}
       onClear={clearSuggestion}
       accountHealth={accountHealth}
-      isSetupComplete={isFullyReady}
-      isRunningSetup={isConnecting}
-      onConnectToTrade={handleConnectAction}
-      isXConnectionOnly={isSetupComplete && !isXConnected}
+      isSetupComplete={isXConnected}
+      isRunningSetup={isConnectingX}
+      onConnectToTrade={connectX}
+      isXConnectionOnly={true}
       onUpdateWeight={updateAssetWeight}
       onRemoveAsset={removeAsset}
     />
   );
 
   return (
-    <>
-      <SocialTradingLayout
-        header={header}
-        leftColumn={leftColumn}
-        centerColumn={centerColumn}
-        rightColumn={rightColumn}
-        bottomPanel={bottomPanel}
-      />
-      {/* Unified setup modal */}
-      <ConnectToTradeModal />
-    </>
+    <SocialTradingLayout
+      header={header}
+      leftColumn={leftColumn}
+      centerColumn={centerColumn}
+      rightColumn={rightColumn}
+      bottomPanel={bottomPanel}
+    />
   );
 }
 

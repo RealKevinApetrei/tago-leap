@@ -1,142 +1,87 @@
 'use client';
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { useOneClickSetup, SetupStep } from '@/hooks/useOneClickSetup';
-import { useAccount } from 'wagmi';
+import { useOneClickSetup } from '@/hooks/useOneClickSetup';
+import { useAccount, useChainId } from 'wagmi';
 import { useConnectModal } from '@rainbow-me/rainbowkit';
+import { useHyperliquidBalance } from '@/hooks/useHyperliquidBalance';
+import { useDepositModal } from '@/components/DepositModal';
 
 interface InlineSetupBarProps {
   onCancel: () => void;
   className?: string;
 }
 
-const STEP_INFO: Record<string, { title: string; description: string }> = {
-  auth: { title: 'Sign In', description: 'Authenticate with Pear Protocol' },
-  agentWallet: { title: 'Create Wallet', description: 'Set up trading agent wallet' },
-  agentApproval: { title: 'Approve Agent', description: 'Allow trading on Hyperliquid' },
-  builderFee: { title: 'Builder Fee', description: 'Enable 0.1% trading fee' },
-  saltAccount: { title: 'Robo Account', description: 'Set up risk management' },
-};
-
-function StepRow({
-  step,
-  isActive,
-  onExecute
-}: {
-  step: SetupStep;
-  isActive: boolean;
-  onExecute: () => void;
-}) {
-  const info = STEP_INFO[step.id];
-  const isComplete = step.status === 'completed';
-  const isError = step.status === 'error';
-  const isPending = step.status === 'pending';
-  const isInProgress = step.status === 'in_progress';
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: -10 }}
-      animate={{ opacity: 1, x: 0 }}
-      className={`flex items-center justify-between py-2 px-3 rounded border transition-colors ${
-        isActive
-          ? 'border-tago-yellow-400/30 bg-tago-yellow-400/5'
-          : isComplete
-          ? 'border-green-400/20 bg-green-400/5'
-          : isError
-          ? 'border-red-400/20 bg-red-400/5'
-          : 'border-white/10 bg-white/5'
-      }`}
-    >
-      <div className="flex items-center gap-3">
-        {/* Status indicator */}
-        <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
-          isComplete
-            ? 'bg-green-400 text-black'
-            : isError
-            ? 'bg-red-400 text-white'
-            : isInProgress
-            ? 'bg-tago-yellow-400 text-black'
-            : 'bg-white/20 text-white/60'
-        }`}>
-          {isComplete ? '✓' : isError ? '!' : isInProgress ? (
-            <motion.span
-              animate={{ rotate: 360 }}
-              transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-            >
-              ◐
-            </motion.span>
-          ) : '○'}
-        </div>
-
-        <div>
-          <div className="text-xs text-white/80 font-medium">{info.title}</div>
-          <div className="text-[10px] text-white/40">{info.description}</div>
-        </div>
-      </div>
-
-      {/* Action button */}
-      {isActive && isPending && (
-        <button
-          onClick={onExecute}
-          className="px-3 py-1 text-[10px] font-medium bg-tago-yellow-400 text-black rounded hover:bg-tago-yellow-300 transition-colors"
-        >
-          Execute
-        </button>
-      )}
-      {isInProgress && (
-        <span className="text-[10px] text-tago-yellow-400">Processing...</span>
-      )}
-      {isError && (
-        <button
-          onClick={onExecute}
-          className="px-3 py-1 text-[10px] font-medium border border-red-400/50 text-red-400 rounded hover:bg-red-400/10 transition-colors"
-        >
-          Retry
-        </button>
-      )}
-    </motion.div>
-  );
-}
-
 export function InlineSetupBar({ onCancel, className }: InlineSetupBarProps) {
   const router = useRouter();
-  const { isConnected } = useAccount();
+  const { isConnected, address } = useAccount();
+  const chainId = useChainId();
   const { openConnectModal } = useConnectModal();
+  const { openDeposit } = useDepositModal();
+  const { balance: hlBalance } = useHyperliquidBalance();
   const {
     steps,
+    currentStep,
     isRunning,
+    isComplete,
     error,
     startSetup,
+    reset,
   } = useOneClickSetup();
 
-  // Find first incomplete step
-  const firstIncompleteIndex = steps.findIndex(s => s.status !== 'completed');
-  const activeStep = firstIncompleteIndex >= 0 ? steps[firstIncompleteIndex] : null;
+  const [needsDeposit, setNeedsDeposit] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
+
+  // Check if wallet is fully ready
+  const isWalletReady = isConnected && address && chainId;
+
+  // Check if we need deposit during agentApproval step
+  const isOnAgentApproval = currentStep?.id === 'agentApproval';
+  const hasNoBalance = hlBalance !== null && hlBalance.availableBalance === 0;
+
+  useEffect(() => {
+    if (isOnAgentApproval && hasNoBalance && !needsDeposit) {
+      setNeedsDeposit(true);
+    }
+  }, [isOnAgentApproval, hasNoBalance, needsDeposit]);
 
   // Count completed steps
   const completedCount = steps.filter(s => s.status === 'completed').length;
-  const allComplete = completedCount === steps.length;
+  const progressPercent = Math.round((completedCount / steps.length) * 100);
 
-  // Execute single step
-  const executeStep = useCallback(async () => {
-    if (!activeStep || isRunning) return;
-    await startSetup();
-  }, [activeStep, isRunning, startSetup]);
-
-  // Handle completion - navigate to /robo
+  // Auto-start setup when wallet is ready (with small delay to ensure connection is stable)
   useEffect(() => {
-    if (allComplete) {
+    if (isWalletReady && !isRunning && !isComplete && !error && !needsDeposit && !hasStarted) {
+      // Small delay to ensure wallet connection is fully established
       const timer = setTimeout(() => {
-        router.push('/robo');
-      }, 1000);
+        setHasStarted(true);
+        startSetup();
+      }, 500);
       return () => clearTimeout(timer);
     }
-  }, [allComplete, router]);
+  }, [isWalletReady, isRunning, isComplete, error, needsDeposit, hasStarted, startSetup]);
 
-  // Wallet not connected
-  if (!isConnected) {
+  // Handle completion
+  useEffect(() => {
+    if (isComplete) {
+      const timer = setTimeout(() => {
+        router.push('/robo');
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [isComplete, router]);
+
+  // Handle deposit completion - resume setup
+  const handleDeposit = () => {
+    openDeposit();
+    // After deposit modal closes, we'll need to retry
+    setNeedsDeposit(false);
+  };
+
+  // Wallet not connected or not ready
+  if (!isWalletReady) {
     return (
       <motion.div
         initial={{ opacity: 0, height: 0 }}
@@ -144,29 +89,60 @@ export function InlineSetupBar({ onCancel, className }: InlineSetupBarProps) {
         exit={{ opacity: 0, height: 0 }}
         className={`font-mono ${className}`}
       >
-        <div className="border border-white/10 rounded-lg p-4 bg-black/50 backdrop-blur-sm">
-          <div className="text-center space-y-3">
-            <p className="text-white/60 text-sm">Connect wallet to continue</p>
-            <button
-              onClick={openConnectModal}
-              className="px-6 py-2 bg-tago-yellow-400 text-black font-medium rounded hover:bg-tago-yellow-300 transition-colors text-sm"
-            >
-              Connect Wallet
-            </button>
-            <button
-              onClick={onCancel}
-              className="block mx-auto text-white/30 hover:text-white/50 text-xs"
-            >
-              Cancel
-            </button>
+        <div className="border border-white/10 rounded-lg px-4 py-3 bg-black/50 backdrop-blur-sm">
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-white/50 text-xs">{isConnected ? 'Connecting...' : 'Connect to continue'}</span>
+            {!isConnected && (
+              <button
+                onClick={openConnectModal}
+                className="px-4 py-1.5 bg-tago-yellow-400 text-black font-medium rounded text-xs hover:bg-tago-yellow-300 transition-colors"
+              >
+                Connect
+              </button>
+            )}
           </div>
         </div>
       </motion.div>
     );
   }
 
-  // All complete - success state
-  if (allComplete) {
+  // Needs deposit
+  if (needsDeposit || (isOnAgentApproval && hasNoBalance)) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, height: 0 }}
+        animate={{ opacity: 1, height: 'auto' }}
+        exit={{ opacity: 0, height: 0 }}
+        className={`font-mono ${className}`}
+      >
+        <div className="border border-tago-yellow-400/30 rounded-lg px-4 py-3 bg-black/50 backdrop-blur-sm">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-tago-yellow-400">!</span>
+              <span className="text-white/60 text-xs">Deposit USDC to Hyperliquid</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleDeposit}
+                className="px-4 py-1.5 bg-tago-yellow-400 text-black font-medium rounded text-xs hover:bg-tago-yellow-300 transition-colors"
+              >
+                Deposit
+              </button>
+              <button
+                onClick={onCancel}
+                className="text-white/30 hover:text-white/50 text-xs"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  // Complete
+  if (isComplete) {
     return (
       <motion.div
         initial={{ opacity: 0 }}
@@ -174,25 +150,49 @@ export function InlineSetupBar({ onCancel, className }: InlineSetupBarProps) {
         exit={{ opacity: 0 }}
         className={`font-mono ${className}`}
       >
-        <div className="border border-green-400/30 rounded-lg p-4 bg-green-400/5 backdrop-blur-sm">
-          <div className="text-center space-y-2">
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: 'spring', damping: 10 }}
-              className="text-green-400 text-xl"
-            >
-              ✓
-            </motion.div>
-            <p className="text-green-400 text-sm font-medium">Setup Complete</p>
-            <p className="text-white/40 text-xs">Launching dashboard...</p>
+        <div className="border border-green-400/30 rounded-lg px-4 py-3 bg-green-400/5 backdrop-blur-sm">
+          <div className="flex items-center justify-center gap-2">
+            <span className="text-green-400">✓</span>
+            <span className="text-green-400 text-xs">Ready</span>
           </div>
         </div>
       </motion.div>
     );
   }
 
-  // Main setup UI
+  // Error
+  if (error) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, height: 0 }}
+        animate={{ opacity: 1, height: 'auto' }}
+        exit={{ opacity: 0, height: 0 }}
+        className={`font-mono ${className}`}
+      >
+        <div className="border border-red-400/30 rounded-lg px-4 py-3 bg-red-400/5 backdrop-blur-sm">
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-red-400/80 text-xs truncate">{error}</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { reset(); setHasStarted(false); }}
+                className="px-3 py-1 bg-tago-yellow-400 text-black font-medium rounded text-xs hover:bg-tago-yellow-300 transition-colors"
+              >
+                Retry
+              </button>
+              <button
+                onClick={onCancel}
+                className="text-white/30 hover:text-white/50 text-xs"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  // Running - compact progress
   return (
     <motion.div
       initial={{ opacity: 0, height: 0 }}
@@ -200,59 +200,39 @@ export function InlineSetupBar({ onCancel, className }: InlineSetupBarProps) {
       exit={{ opacity: 0, height: 0 }}
       className={`font-mono ${className}`}
     >
-      <div className="border border-white/10 rounded-lg p-4 bg-black/50 backdrop-blur-sm">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-sm text-white/80 font-medium">Account Setup</h3>
-            <p className="text-[10px] text-white/40">{completedCount}/{steps.length} steps complete</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Progress bar */}
-            <div className="w-24 h-1.5 bg-white/10 rounded-full overflow-hidden">
-              <motion.div
-                className="h-full bg-tago-yellow-400"
-                initial={{ width: 0 }}
-                animate={{ width: `${(completedCount / steps.length) * 100}%` }}
-                transition={{ duration: 0.3 }}
+      <div className="border border-tago-yellow-400/30 rounded-lg px-4 py-3 bg-black/50 backdrop-blur-sm">
+        <div className="flex items-center gap-4">
+          {/* Step dots */}
+          <div className="flex items-center gap-1">
+            {steps.map((step, i) => (
+              <div
+                key={step.id}
+                className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                  step.status === 'completed'
+                    ? 'bg-green-400'
+                    : step.status === 'in_progress'
+                    ? 'bg-tago-yellow-400 animate-pulse'
+                    : 'bg-white/20'
+                }`}
               />
-            </div>
+            ))}
           </div>
-        </div>
 
-        {/* Steps list */}
-        <div className="space-y-2">
-          {steps.map((step, index) => (
-            <StepRow
-              key={step.id}
-              step={step}
-              isActive={index === firstIncompleteIndex}
-              onExecute={executeStep}
-            />
-          ))}
-        </div>
+          {/* Current step */}
+          <span className="text-white/60 text-xs flex-1 truncate">
+            {currentStep?.label || 'Starting...'}
+          </span>
 
-        {/* Error message */}
-        {error && (
-          <div className="mt-3 p-2 rounded bg-red-400/10 border border-red-400/20">
-            <p className="text-red-400 text-xs">{error}</p>
-          </div>
-        )}
+          {/* Progress */}
+          <span className="text-white/40 text-xs">{progressPercent}%</span>
 
-        {/* Footer */}
-        <div className="mt-4 flex items-center justify-between">
+          {/* Cancel */}
           <button
             onClick={onCancel}
-            className="text-white/30 hover:text-white/50 text-xs transition-colors"
+            className="text-white/30 hover:text-white/50 text-xs"
           >
-            Cancel
+            ✕
           </button>
-
-          {firstIncompleteIndex > 0 && (
-            <span className="text-[10px] text-white/30">
-              Click Execute on each step to proceed
-            </span>
-          )}
         </div>
       </div>
     </motion.div>

@@ -151,41 +151,49 @@ export function useUnifiedSetup(): UseUnifiedSetupReturn {
   }, [address]);
 
   // Connect X account via OAuth
+  // DEMO MODE: Skip actual OAuth and mock the connection
   const connectX = useCallback(async () => {
     if (!address) return;
 
     setIsConnectingX(true);
     setXError(null);
 
-    try {
-      const response = await fetch('/api/twitter/auth', { method: 'POST' });
-      const data = await response.json();
+    // Demo mode: simulate connection delay then set mock account
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Check for configuration errors
-      if (data.error) {
-        console.error('[useUnifiedSetup] X OAuth config error:', data.error);
-        setXError(data.error);
-        setIsConnectingX(false);
-        return;
-      }
+    setXAccount({
+      id: 'demo_user_123',
+      username: 'demo_trader',
+      avatar: 'https://abs.twimg.com/sticky/default_profile_images/default_profile_normal.png',
+    });
+    setIsConnectingX(false);
 
-      if (data.authUrl) {
-        // Store verifier in cookie for callback
-        document.cookie = `x_code_verifier=${data.codeVerifier}; path=/; max-age=600; SameSite=Lax`;
-        document.cookie = `x_wallet=${address}; path=/; max-age=600; SameSite=Lax`;
-        document.cookie = `x_state=${data.state}; path=/; max-age=600; SameSite=Lax`;
-
-        // Redirect to Twitter
-        window.location.href = data.authUrl;
-      } else {
-        setXError('Failed to get authorization URL');
-        setIsConnectingX(false);
-      }
-    } catch (err) {
-      console.error('[useUnifiedSetup] Failed to initiate X OAuth:', err);
-      setXError('Failed to connect to X');
-      setIsConnectingX(false);
-    }
+    // TODO: Re-enable real OAuth when X API is set up
+    // try {
+    //   const response = await fetch('/api/twitter/auth', { method: 'POST' });
+    //   const data = await response.json();
+    //
+    //   if (data.error) {
+    //     console.error('[useUnifiedSetup] X OAuth config error:', data.error);
+    //     setXError(data.error);
+    //     setIsConnectingX(false);
+    //     return;
+    //   }
+    //
+    //   if (data.authUrl) {
+    //     document.cookie = `x_code_verifier=${data.codeVerifier}; path=/; max-age=600; SameSite=Lax`;
+    //     document.cookie = `x_wallet=${address}; path=/; max-age=600; SameSite=Lax`;
+    //     document.cookie = `x_state=${data.state}; path=/; max-age=600; SameSite=Lax`;
+    //     window.location.href = data.authUrl;
+    //   } else {
+    //     setXError('Failed to get authorization URL');
+    //     setIsConnectingX(false);
+    //   }
+    // } catch (err) {
+    //   console.error('[useUnifiedSetup] Failed to initiate X OAuth:', err);
+    //   setXError('Failed to connect to X');
+    //   setIsConnectingX(false);
+    // }
   }, [address]);
 
   // Disconnect X account

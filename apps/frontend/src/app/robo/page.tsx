@@ -580,54 +580,24 @@ export default function RoboPage() {
     );
   }
 
-  // Setup incomplete banner - shows a simple message instead of auto-executing setup
-  // Users should complete setup on the homepage first
-  if (isConnected && !setupComplete) {
-    const completedCount = setupSteps.filter(s => s.status === 'completed').length;
-
+  // Only show setup panel if user hasn't authenticated at all
+  // If they've authenticated via homepage, let them through even if other steps aren't complete
+  if (isConnected && !isAuthenticated && !authLoading) {
     return (
       <div className="max-w-lg mx-auto px-4 py-8 space-y-6">
-        <SwapPanel title="Setup Required" subtitle="Complete setup to start trading">
+        <SwapPanel title="Setup Required" subtitle="Authenticate to start trading">
           <div className="space-y-4">
-            {/* Progress indicator */}
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-white/60">Setup Progress</span>
-              <span className="text-white/80 font-mono">{completedCount}/{setupSteps.length}</span>
-            </div>
-
-            {/* Progress bar */}
-            <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-tago-yellow-400 transition-all duration-300"
-                style={{ width: `${(completedCount / setupSteps.length) * 100}%` }}
-              />
-            </div>
-
-            {/* Steps summary */}
-            <div className="space-y-2">
-              {setupSteps.map((step) => (
-                <div key={step.id} className="flex items-center gap-2 text-xs">
-                  <span className={step.status === 'completed' ? 'text-green-400' : 'text-white/40'}>
-                    {step.status === 'completed' ? '✓' : '○'}
-                  </span>
-                  <span className={step.status === 'completed' ? 'text-white/60' : 'text-white/40'}>
-                    {step.label}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <p className="text-white/50 text-sm text-center">
+              Please complete setup on the homepage first.
+            </p>
 
             {/* Action */}
             <a
               href="/"
               className="block w-full py-3 text-center bg-tago-yellow-400 text-black font-medium rounded-lg hover:bg-tago-yellow-300 transition-colors"
             >
-              Complete Setup
+              Go to Homepage
             </a>
-
-            <p className="text-center text-xs text-white/30">
-              Return to homepage to complete your account setup
-            </p>
           </div>
         </SwapPanel>
       </div>
