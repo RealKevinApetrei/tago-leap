@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 
@@ -36,25 +37,15 @@ export function Navigation() {
         <div className="flex items-center justify-between">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2.5 group">
-            {/* Animated Logo Mark */}
-            <div className="relative w-8 h-8">
-              {/* Outer glow ring */}
-              <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-tago-yellow-400/20 to-tago-yellow-500/10 group-hover:from-tago-yellow-400/30 group-hover:to-tago-yellow-500/20 transition-all duration-500" />
-              {/* Inner container */}
-              <div className="absolute inset-[2px] rounded-md bg-tago-black flex items-center justify-center overflow-hidden">
-                {/* Animated gradient background */}
-                <div className="absolute inset-0 bg-gradient-to-br from-tago-yellow-400/10 via-transparent to-tago-yellow-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                {/* Lightning icon */}
-                <svg
-                  className="w-4 h-4 text-tago-yellow-400 relative z-10 group-hover:scale-110 transition-transform duration-300"
-                  fill="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                </svg>
-              </div>
-              {/* Pulse effect on hover */}
-              <div className="absolute inset-0 rounded-lg border border-tago-yellow-400/0 group-hover:border-tago-yellow-400/30 group-hover:animate-pulse transition-all duration-300" />
+            {/* Logo Image */}
+            <div className="relative w-8 h-8 rounded-lg overflow-hidden shadow-lg shadow-tago-yellow-500/20 group-hover:shadow-tago-yellow-500/40 group-hover:scale-105 transition-all duration-300">
+              <Image
+                src="/logo.png"
+                alt="TAGO"
+                fill
+                className="object-cover"
+                priority
+              />
             </div>
             {/* Text */}
             <div className="flex items-baseline gap-1">

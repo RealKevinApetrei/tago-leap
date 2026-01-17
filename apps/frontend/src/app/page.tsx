@@ -265,7 +265,15 @@ export default function Home() {
 
         {/* Attribution */}
         <p className="text-[10px] text-white/20">
-          Powered by <span className="italic text-tago-yellow-400/40">TAGO Research</span>
+          Powered by{' '}
+          <a
+            href="https://tagoresearch.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="italic text-tago-yellow-400/40 hover:text-tago-yellow-400/70 transition-colors"
+          >
+            TAGO Research
+          </a>
         </p>
       </div>
 
