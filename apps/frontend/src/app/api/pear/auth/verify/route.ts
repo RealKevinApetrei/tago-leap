@@ -27,10 +27,12 @@ export async function POST(request: NextRequest) {
     await saveAuthTokens(supabase, user.id, walletAddress, tokens);
 
     return NextResponse.json({ success: true, data: { authenticated: true } });
-  } catch (err) {
+  } catch (err: any) {
     console.error('Authentication failed:', err);
+    // Pass through the actual error message from Pear Protocol
+    const errorMessage = err?.message || 'Authentication failed';
     return NextResponse.json(
-      { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication failed' } },
+      { success: false, error: { code: 'UNAUTHORIZED', message: errorMessage } },
       { status: 401 }
     );
   }

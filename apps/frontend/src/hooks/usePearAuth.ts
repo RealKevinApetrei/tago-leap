@@ -66,29 +66,43 @@ export function usePearAuth(): UsePearAuthReturn {
 
     try {
       // 1. Get EIP-712 message to sign (includes timestamp)
+      console.log('[usePearAuth] Getting EIP-712 message for', address);
       const eip712Data = await pearApi.getAuthMessage(address);
+      console.log('[usePearAuth] Got EIP-712 data:', {
+        domain: eip712Data.domain,
+        primaryType: eip712Data.primaryType,
+        timestamp: eip712Data.timestamp,
+      });
 
       // 2. Switch to Arbitrum if needed (Pear uses chainId 42161 for EIP-712)
       const requiredChainId = eip712Data.domain.chainId;
+      console.log('[usePearAuth] Current chain:', currentChainId, 'Required chain:', requiredChainId);
       if (currentChainId !== requiredChainId) {
         console.log('[usePearAuth] Switching to chain', requiredChainId);
         await switchChainAsync({ chainId: requiredChainId });
+        // Wait a moment for the chain switch to propagate
+        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log('[usePearAuth] Chain switch completed');
       }
 
       // 3. Sign the message with wallet
+      console.log('[usePearAuth] Requesting signature...');
       const signature = await signTypedDataAsync({
         domain: eip712Data.domain as any,
         types: eip712Data.types as any,
         primaryType: eip712Data.primaryType as any,
         message: eip712Data.message as any,
       });
+      console.log('[usePearAuth] Got signature:', signature.slice(0, 20) + '...');
 
       // 4. Submit signature with timestamp to verify
+      console.log('[usePearAuth] Verifying with Pear Protocol...');
       await pearApi.verifyAuth({
         walletAddress: address,
         signature,
         timestamp: eip712Data.timestamp,
       });
+      console.log('[usePearAuth] Verification successful!');
 
       // 5. Update state
       await checkStatus();
@@ -100,7 +114,9 @@ export function usePearAuth(): UsePearAuthReturn {
       }
     } catch (err: any) {
       console.error('[usePearAuth] Authentication failed:', err);
-      setError(err?.message || 'Authentication failed');
+      // Extract the actual error message
+      const errorMessage = err?.message || 'Authentication failed';
+      setError(errorMessage);
       setIsAuthenticated(false);
     } finally {
       setIsAuthenticating(false);
