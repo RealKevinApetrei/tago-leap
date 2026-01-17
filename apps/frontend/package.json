@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --port 3000",
     "build": "pnpm run build:shared && next build",
-    "build:shared": "cd ../../packages/shared && pnpm run build",
+    "build:shared": "cd ../../packages/shared && pnpm run build && ls -la dist/types/",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"

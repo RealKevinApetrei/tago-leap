@@ -3,18 +3,36 @@
   "version": "0.0.2",
   "private": true,
   "type": "module",
+  "main": "./dist/types/index.js",
+  "module": "./dist/types/index.js",
+  "types": "./dist/types/index.d.ts",
   "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/types/index.js",
+      "default": "./dist/types/index.js"
+    },
     "./env": {
       "types": "./dist/env/index.d.ts",
-      "import": "./dist/env/index.js"
+      "import": "./dist/env/index.js",
+      "default": "./dist/env/index.js"
     },
     "./supabase": {
       "types": "./dist/supabase/index.d.ts",
-      "import": "./dist/supabase/index.js"
+      "import": "./dist/supabase/index.js",
+      "default": "./dist/supabase/index.js"
     },
     "./types": {
       "types": "./dist/types/index.d.ts",
-      "import": "./dist/types/index.js"
+      "import": "./dist/types/index.js",
+      "default": "./dist/types/index.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "types": ["./dist/types/index.d.ts"],
+      "env": ["./dist/env/index.d.ts"],
+      "supabase": ["./dist/supabase/index.d.ts"]
     }
   },
   "scripts": {

@@ -676,12 +676,10 @@ export default function RoboPage() {
               Hyperliquid requires a USDC deposit before you can approve an agent wallet. Deposit any amount to continue.
             </p>
             <a
-              href="https://app.hyperliquid.xyz"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="/onboard"
               className="inline-block mt-2 text-sm text-tago-yellow-400 font-medium hover:underline"
             >
-              Open Hyperliquid to deposit USDC →
+              Deposit USDC via Bridge →
             </a>
           </div>
 
@@ -769,12 +767,10 @@ export default function RoboPage() {
 
           <div className="text-center">
             <a
-              href="https://app.hyperliquid.xyz"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="/onboard"
               className="text-xs text-tago-yellow-400 hover:underline"
             >
-              Make sure you have USDC deposited on Hyperliquid
+              Need to deposit USDC? Use our bridge →
             </a>
           </div>
         </SwapPanel>
@@ -1152,12 +1148,10 @@ export default function RoboPage() {
                         Insufficient balance. Need ${((parseFloat(stakeUsd || '0') * leverage) - hlBalance.availableBalance).toFixed(2)} more.
                       </p>
                       <a
-                        href="https://app.hyperliquid.xyz"
-                        target="_blank"
-                        rel="noopener noreferrer"
+                        href="/onboard"
                         className="text-xs text-tago-yellow-400 hover:underline"
                       >
-                        Deposit USDC on Hyperliquid
+                        Deposit more USDC →
                       </a>
                     </div>
                   )}
