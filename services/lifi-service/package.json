@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/bootstrap.ts",
-    "build": "tsc",
+    "build": "pnpm --filter=@tago-leap/shared build && tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
