@@ -223,6 +223,7 @@ export default function OnboardPage() {
   // Salt wallet state
   const [saltWallet, setSaltWallet] = useState<{ saltWalletAddress: string; exists: boolean } | null>(null);
   const [saltLoading, setSaltLoading] = useState(false);
+<<<<<<< HEAD
   const [flowStatus, setFlowStatus] = useState<FlowStatus>('idle');
 
   // Token balances
@@ -246,6 +247,29 @@ export default function OnboardPage() {
       message,
       type
     }]);
+=======
+
+  // Flow status and progress
+  const [flowStatus, setFlowStatus] = useState<FlowStatus>('idle');
+  const [stepStatuses, setStepStatuses] = useState<Record<number, 'pending' | 'in_progress' | 'completed' | 'failed'>>({});
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const [lifiRoute, setLifiRoute] = useState<RouteExtended | null>(null);
+
+  // Token balances state
+  const [tokenBalances, setTokenBalances] = useState<Record<string, string>>({});
+  const [balancesLoading, setBalancesLoading] = useState(false);
+
+  // Advanced mode with transaction log
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [txLog, setTxLog] = useState<{ time: string; message: string; type: 'info' | 'success' | 'error' | 'warn' }[]>([]);
+
+  // Helper to add log entry
+  const addLog = useCallback((message: string, type: 'info' | 'success' | 'error' | 'warn' = 'info') => {
+    const time = new Date().toLocaleTimeString();
+    setTxLog(prev => [...prev, { time, message, type }]);
+    console.log(`[${type.toUpperCase()}] ${message}`);
+>>>>>>> 177266d (11)
   }, []);
 
   // Use connected wallet address
@@ -507,6 +531,107 @@ export default function OnboardPage() {
       }
     }
     throw lastError;
+  };
+
+  // Minimum deposit for Hyperliquid Bridge2 (5 USDC)
+  const MIN_DEPOSIT_USDC = 5n * 1000000n; // 5 USDC in 6 decimals
+
+  // ERC20 transfer ABI
+  const ERC20_TRANSFER_ABI = [
+    {
+      name: 'transfer',
+      type: 'function',
+      inputs: [
+        { name: 'to', type: 'address' },
+        { name: 'amount', type: 'uint256' },
+      ],
+      outputs: [{ type: 'bool' }],
+    },
+  ] as const;
+
+  // Deposit USDC to Hyperliquid L1 via simple transfer to Bridge2
+  // Per Hyperliquid docs: "The user sends native USDC to the bridge,
+  // and it is credited to the account that sent it in less than 1 minute"
+  const depositToHyperliquidL1 = async (log: (msg: string, type: 'info' | 'success' | 'error' | 'warn') => void) => {
+    if (!walletClient || !address) {
+      throw new Error('Wallet not connected');
+    }
+
+    // Ensure we're on Arbitrum
+    const ethereum = (window as any).ethereum;
+    if (ethereum) {
+      const currentChainHex = await ethereum.request({ method: 'eth_chainId' });
+      const currentChainId = parseInt(currentChainHex, 16);
+      if (currentChainId !== ARBITRUM_CHAIN_ID) {
+        log('Switching to Arbitrum...', 'info');
+        await ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: `0x${ARBITRUM_CHAIN_ID.toString(16)}` }],
+        });
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    // Get the deposit amount from the quote
+    const depositAmountFormatted = quote?.recommended?.toAmountFormatted || amount || '0';
+    const depositAmount = parseUnits(depositAmountFormatted, 6); // USDC has 6 decimals
+
+    if (depositAmount <= 0n) {
+      throw new Error('Invalid deposit amount');
+    }
+
+    // Check minimum deposit (5 USDC)
+    if (depositAmount < MIN_DEPOSIT_USDC) {
+      throw new Error(`Minimum deposit is 5 USDC. You're trying to deposit ${depositAmountFormatted} USDC.`);
+    }
+
+    log(`Deposit amount: ${depositAmountFormatted} USDC`, 'info');
+
+    // Create public client for reading contract state
+    const { createPublicClient, http } = await import('viem');
+    const { arbitrum } = await import('viem/chains');
+    const publicClient = createPublicClient({
+      chain: arbitrum,
+      transport: http(),
+    });
+
+    // Check USDC balance
+    const balance = await publicClient.readContract({
+      address: ARBITRUM_USDC as `0x${string}`,
+      abi: ERC20_PERMIT_ABI,
+      functionName: 'balanceOf',
+      args: [address],
+    }) as bigint;
+
+    log(`USDC balance: ${formatUnits(balance, 6)}`, 'info');
+
+    if (balance < depositAmount) {
+      throw new Error(`Insufficient USDC balance. Have: ${formatUnits(balance, 6)}, Need: ${depositAmountFormatted}`);
+    }
+
+    // Simple approach: Transfer USDC directly to the Hyperliquid Bridge
+    // The bridge automatically credits your Hyperliquid account
+    log('Transferring USDC to Hyperliquid Bridge...', 'info');
+
+    const transferData = encodeFunctionData({
+      abi: ERC20_TRANSFER_ABI,
+      functionName: 'transfer',
+      args: [HYPERLIQUID_BRIDGE as `0x${string}`, depositAmount],
+    });
+
+    const depositTxHash = await walletClient.sendTransaction({
+      to: ARBITRUM_USDC as `0x${string}`,
+      data: transferData,
+      chain: { id: ARBITRUM_CHAIN_ID } as any,
+    });
+
+    log(`Deposit tx: ${depositTxHash}`, 'info');
+    setTxHash(depositTxHash);
+
+    // Wait for deposit to confirm
+    await publicClient.waitForTransactionReceipt({ hash: depositTxHash });
+    log('USDC transfer to Hyperliquid Bridge confirmed!', 'success');
+    log('Note: Funds will appear in your Perp account within ~1 minute', 'info');
   };
 
   const handleGetQuote = async () => {
@@ -780,14 +905,17 @@ export default function OnboardPage() {
   };
 
   // Alias for handleExecuteSwap for clarity in UI context
+<<<<<<< HEAD
   const handleSwap = handleExecuteSwap;
+=======
+>>>>>>> 177266d (11)
   const handleDeposit = handleExecuteSwap;
 
   const handleRetry = () => {
     setError(null);
     setFlowStatus('idle');
     if (quote) {
-      handleSwap();
+      handleExecuteSwap();
     } else {
       handleGetQuote();
     }
