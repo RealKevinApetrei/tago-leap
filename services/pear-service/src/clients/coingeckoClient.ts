@@ -57,6 +57,18 @@ const KNOWN_COINGECKO_IDS: Record<string, string> = {
   FLOKI: 'floki',
   TRUMP: 'official-trump',
   MELANIA: 'melania-meme',
+
+  // Commodities / Real-world assets (mapped to crypto equivalents)
+  GOLD: 'pax-gold',        // PAXG - gold-backed token
+  XAUT: 'tether-gold',     // Tether Gold
+  PAXG: 'pax-gold',
+  SILVER: 'silver-token',  // Best effort - may not have good data
+
+  // Stocks (synthetic assets - mapped to related tokens if available)
+  GOOGL: 'alphabet-inc',   // May not exist on CoinGecko
+  AAPL: 'apple-inc',       // May not exist on CoinGecko
+  TSLA: 'tesla-inc',       // May not exist on CoinGecko
+  SPY: 'spdr-sp-500-etf',  // May not exist on CoinGecko
 };
 
 // Dynamic cache for discovered token IDs

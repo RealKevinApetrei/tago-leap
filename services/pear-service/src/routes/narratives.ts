@@ -107,8 +107,13 @@ export async function narrativesRoutes(app: FastifyInstance) {
       return reply.badRequest('Days must be between 1 and 365');
     }
 
-    const longAsset = long.toUpperCase();
-    const shortAsset = short.toUpperCase();
+    // Strip any prefix (e.g., "flx:GOLD" -> "GOLD", "xyz:GOOGL" -> "GOOGL")
+    const stripPrefix = (symbol: string) => {
+      const parts = symbol.split(':');
+      return parts[parts.length - 1].toUpperCase();
+    };
+    const longAsset = stripPrefix(long);
+    const shortAsset = stripPrefix(short);
 
     try {
       const performance = await calculateNarrativePerformance(
