@@ -310,18 +310,19 @@ export const lifiApi = {
 };
 
 // Salt Service API
+// Note: saltServiceUrl is now '/api/salt', so paths no longer need '/salt/' prefix
 export const saltApi = {
   getStrategies: () =>
-    fetchApi<any[]>(`${config.saltServiceUrl}/salt/strategies`),
+    fetchApi<any[]>(`${config.saltServiceUrl}/strategies`),
 
   createAccount: (data: { userWalletAddress: string }) =>
-    fetchApi<any>(`${config.saltServiceUrl}/salt/accounts`, {
+    fetchApi<any>(`${config.saltServiceUrl}/accounts`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
   getAccount: (id: string) =>
-    fetchApi<any>(`${config.saltServiceUrl}/salt/accounts/${id}`),
+    fetchApi<any>(`${config.saltServiceUrl}/accounts/${id}`),
 
   setPolicy: (
     accountId: string,
@@ -332,7 +333,7 @@ export const saltApi = {
       maxDrawdownPct?: number;
     }
   ) =>
-    fetchApi<any>(`${config.saltServiceUrl}/salt/accounts/${accountId}/policies`, {
+    fetchApi<any>(`${config.saltServiceUrl}/accounts/${accountId}/policies`, {
       method: 'POST',
       body: JSON.stringify({ policy }),
     }),
@@ -345,7 +346,7 @@ export const saltApi = {
       active: boolean;
     }
   ) =>
-    fetchApi<any>(`${config.saltServiceUrl}/salt/accounts/${accountId}/strategies`, {
+    fetchApi<any>(`${config.saltServiceUrl}/accounts/${accountId}/strategies`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
@@ -360,17 +361,17 @@ export const saltApi = {
       mode: 'pair' | 'basket';
     }
   ) =>
-    fetchApi<any>(`${config.saltServiceUrl}/salt/accounts/${accountId}/trade`, {
+    fetchApi<any>(`${config.saltServiceUrl}/accounts/${accountId}/trade`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
   getAccountTrades: (accountId: string) =>
-    fetchApi<any[]>(`${config.saltServiceUrl}/salt/accounts/${accountId}/trades`),
+    fetchApi<any[]>(`${config.saltServiceUrl}/accounts/${accountId}/trades`),
 
   getStrategyRuns: (accountId: string, limit?: number) =>
     fetchApi<any[]>(
-      `${config.saltServiceUrl}/salt/accounts/${accountId}/strategy-runs${limit ? `?limit=${limit}` : ''}`
+      `${config.saltServiceUrl}/accounts/${accountId}/strategy-runs${limit ? `?limit=${limit}` : ''}`
     ),
 
   updateStrategy: (
@@ -378,7 +379,7 @@ export const saltApi = {
     strategyId: string,
     active: boolean
   ) =>
-    fetchApi<any>(`${config.saltServiceUrl}/salt/accounts/${accountId}/strategies`, {
+    fetchApi<any>(`${config.saltServiceUrl}/accounts/${accountId}/strategies`, {
       method: 'POST',
       body: JSON.stringify({ strategyId, active }),
     }),
@@ -400,7 +401,7 @@ export const saltApi = {
       slippage?: number;
     }
   ) =>
-    fetchApi<any>(`${config.saltServiceUrl}/salt/accounts/${accountId}/pair-trade`, {
+    fetchApi<any>(`${config.saltServiceUrl}/accounts/${accountId}/pair-trade`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),

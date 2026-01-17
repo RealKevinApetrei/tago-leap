@@ -1,0 +1,43 @@
+import type { SupabaseAdminClient } from '../supabase';
+import type { User } from '@tago-leap/shared/types';
+
+export async function getOrCreateUser(
+  supabase: SupabaseAdminClient,
+  walletAddress: string
+): Promise<User> {
+  const normalizedAddress = walletAddress.toLowerCase();
+
+  const { data, error } = await supabase
+    .from('users')
+    .upsert(
+      { wallet_address: normalizedAddress },
+      { onConflict: 'wallet_address', ignoreDuplicates: false }
+    )
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to get or create user: ${error.message}`);
+  }
+
+  return data;
+}
+
+export async function getUserByWallet(
+  supabase: SupabaseAdminClient,
+  walletAddress: string
+): Promise<User | null> {
+  const normalizedAddress = walletAddress.toLowerCase();
+
+  const { data, error } = await supabase
+    .from('users')
+    .select()
+    .eq('wallet_address', normalizedAddress)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    throw new Error(`Failed to get user: ${error.message}`);
+  }
+
+  return data;
+}
