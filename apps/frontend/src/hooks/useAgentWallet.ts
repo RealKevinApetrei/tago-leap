@@ -232,13 +232,15 @@ export function useAgentWallet(): UseAgentWalletReturn {
       }
 
       // Check for error in response body
+      let responseData: any;
       try {
-        const responseData = JSON.parse(responseText);
-        if (responseData.status === 'err') {
-          throw new Error(responseData.response || 'Approval failed');
-        }
+        responseData = JSON.parse(responseText);
       } catch {
         // Response might not be JSON, that's okay
+      }
+
+      if (responseData?.status === 'err') {
+        throw new Error(responseData.response || 'Approval failed');
       }
 
       // Mark as approved and refresh status
