@@ -29,21 +29,25 @@ interface NarrativePerformance {
 }
 
 interface PerformanceChartProps {
-  longAsset: string;
-  shortAsset: string;
+  longAsset?: string;
+  shortAsset?: string;
   days?: number;
 }
-
-const PEAR_SERVICE_URL = process.env.NEXT_PUBLIC_PEAR_SERVICE_URL || 'http://localhost:3001';
 
 export function PerformanceChart({ longAsset, shortAsset, days = 180 }: PerformanceChartProps) {
   const [data, setData] = useState<NarrativePerformance | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Determine if this is a single-sided strategy
+  const isLongOnly = !!longAsset && !shortAsset;
+  const isShortOnly = !longAsset && !!shortAsset;
+  const isPairTrade = !!longAsset && !!shortAsset;
+
   useEffect(() => {
     async function fetchPerformance() {
-      if (!longAsset || !shortAsset) {
+      // Need at least one asset
+      if (!longAsset && !shortAsset) {
         setLoading(false);
         return;
       }
@@ -52,7 +56,13 @@ export function PerformanceChart({ longAsset, shortAsset, days = 180 }: Performa
       setError(null);
 
       try {
-        const url = `${PEAR_SERVICE_URL}/narratives/custom/performance?long=${longAsset}&short=${shortAsset}&days=${days}`;
+        // Build URL with available assets
+        const params = new URLSearchParams();
+        if (longAsset) params.set('long', longAsset);
+        if (shortAsset) params.set('short', shortAsset);
+        params.set('days', days.toString());
+
+        const url = `/api/pear/narratives/custom/performance?${params.toString()}`;
         const response = await fetch(url);
         const result = await response.json();
 
@@ -67,9 +77,11 @@ export function PerformanceChart({ longAsset, shortAsset, days = 180 }: Performa
         console.error('Failed to fetch performance:', err);
         // Show user-friendly error message
         const errorMessage = err instanceof Error ? err.message : 'Failed to load performance data';
-        // If it's a token not found error, show which token
+        // Handle specific error types
         if (errorMessage.includes('not found on CoinGecko')) {
-          setError(`Historical data not available for this token pair`);
+          setError(`Historical data not available for this token`);
+        } else if (errorMessage.includes('rate limit') || errorMessage.includes('429')) {
+          setError(`Rate limited - try again in a moment`);
         } else {
           setError(errorMessage);
         }
@@ -81,7 +93,8 @@ export function PerformanceChart({ longAsset, shortAsset, days = 180 }: Performa
     fetchPerformance();
   }, [longAsset, shortAsset, days]);
 
-  if (!longAsset || !shortAsset) {
+  // Need at least one asset to show the chart
+  if (!longAsset && !shortAsset) {
     return null;
   }
 
@@ -133,13 +146,21 @@ export function PerformanceChart({ longAsset, shortAsset, days = 180 }: Performa
     return null;
   };
 
+  // Generate subtitle based on strategy type
+  const getSubtitle = () => {
+    if (isPairTrade) return `${longAsset} vs ${shortAsset} (${days} days)`;
+    if (isLongOnly) return `Long ${longAsset} (${days} days)`;
+    if (isShortOnly) return `Short ${shortAsset} (${days} days)`;
+    return '';
+  };
+
   return (
     <div className="bg-white/[0.03] border border-white/[0.08] rounded-xl p-4">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-white/80 text-sm font-medium">Historical Performance</h3>
           <p className="text-white/40 text-xs">
-            {longAsset} vs {shortAsset} ({days} days)
+            {getSubtitle()}
           </p>
         </div>
         <div className="text-right">
