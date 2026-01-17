@@ -260,10 +260,13 @@ export interface LifiRouteStep {
 export interface SupportedOption {
   chainId: number;
   chainName: string;
+  chainLogoUri?: string;
   tokens: {
     address: string;
     symbol: string;
     decimals: number;
+    logoUri?: string;
+    priceUsd?: string;
   }[];
 }
 

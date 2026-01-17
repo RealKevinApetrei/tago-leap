@@ -53,10 +53,12 @@ function getChainName(chainId: number): string {
 interface LifiChain {
   id: number;
   name: string;
+  logoURI?: string;
   nativeToken: {
     address: string;
     symbol: string;
     decimals: number;
+    logoURI?: string;
   };
 }
 
@@ -65,6 +67,7 @@ interface LifiToken {
   symbol: string;
   decimals: number;
   name: string;
+  logoURI?: string;
   priceUSD?: string;
   chainId: number;
 }
@@ -97,10 +100,13 @@ export async function getSupportedOptions(): Promise<SupportedOption[]> {
       return {
         chainId: chain.id,
         chainName: chain.name,
+        chainLogoUri: chain.logoURI,
         tokens: popularTokens.map(t => ({
           address: t.address,
           symbol: t.symbol,
           decimals: t.decimals,
+          logoUri: t.logoURI,
+          priceUsd: t.priceUSD,
         })),
       };
     });
@@ -117,25 +123,28 @@ function getFallbackOptions(): SupportedOption[] {
     {
       chainId: 1,
       chainName: 'Ethereum',
+      chainLogoUri: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/ethereum.svg',
       tokens: [
-        { address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', decimals: 18 },
-        { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC', decimals: 6 },
+        { address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', decimals: 18, logoUri: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png' },
+        { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC', decimals: 6, logoUri: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png' },
       ],
     },
     {
       chainId: 42161,
       chainName: 'Arbitrum',
+      chainLogoUri: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/arbitrum.svg',
       tokens: [
-        { address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', decimals: 18 },
-        { address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', symbol: 'USDC', decimals: 6 },
+        { address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', decimals: 18, logoUri: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png' },
+        { address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', symbol: 'USDC', decimals: 6, logoUri: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png' },
       ],
     },
     {
       chainId: 999,
       chainName: 'HyperEVM',
+      chainLogoUri: 'https://app.hyperliquid.xyz/icons/hyperliquid.svg',
       tokens: [
-        { address: '0x0000000000000000000000000000000000000000', symbol: 'HYPE', decimals: 18 },
-        { address: '0xb88339CB7199b77E23DB6E890353E22632Ba630f', symbol: 'USDC', decimals: 6 },
+        { address: '0x0000000000000000000000000000000000000000', symbol: 'HYPE', decimals: 18, logoUri: 'https://app.hyperliquid.xyz/icons/hyperliquid.svg' },
+        { address: '0xb88339CB7199b77E23DB6E890353E22632Ba630f', symbol: 'USDC', decimals: 6, logoUri: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png' },
       ],
     },
   ];

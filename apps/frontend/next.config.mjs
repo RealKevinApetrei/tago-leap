@@ -7,6 +7,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ['@tago-leap/shared'],
+  // Allow external images for chain/token logos
+  images: {
+    remotePatterns: [
+      { protocol: 'https', hostname: 'raw.githubusercontent.com' },
+      { protocol: 'https', hostname: 'app.hyperliquid.xyz' },
+      { protocol: 'https', hostname: 'assets.coingecko.com' },
+      { protocol: 'https', hostname: 'static.debank.com' },
+      { protocol: 'https', hostname: '**.lifi.tools' },
+    ],
+  },
   // Skip type checking during build (done in CI separately)
   typescript: {
     ignoreBuildErrors: true,
