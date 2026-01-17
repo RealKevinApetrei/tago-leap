@@ -662,6 +662,23 @@ export default function RoboPage() {
         </Card>
 
         <SwapPanel title="Approve on Hyperliquid" subtitle="Step 2: Sign approval">
+          <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 space-y-2">
+            <p className="text-sm text-yellow-400 font-medium">
+              Deposit required first
+            </p>
+            <p className="text-xs text-yellow-400/70">
+              Hyperliquid requires a USDC deposit before you can approve an agent wallet. Deposit any amount to continue.
+            </p>
+            <a
+              href="https://app.hyperliquid.xyz"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block mt-2 text-sm text-tago-yellow-400 font-medium hover:underline"
+            >
+              Open Hyperliquid to deposit USDC →
+            </a>
+          </div>
+
           <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08] space-y-3">
             <p className="text-sm text-white/60 font-light leading-relaxed">
               Sign a message to approve Pear Protocol to trade on Hyperliquid on your behalf. This is a one-time approval.
@@ -669,7 +686,6 @@ export default function RoboPage() {
             <div className="text-xs text-white/40 space-y-1">
               <p>After approval, you also need to:</p>
               <ul className="list-disc list-inside space-y-1 ml-2">
-                <li>Deposit USDC to Hyperliquid</li>
                 <li>Approve builder fee (0.06% per trade)</li>
               </ul>
             </div>
@@ -690,17 +706,6 @@ export default function RoboPage() {
           >
             {agentWalletApproving ? 'Approving...' : 'Approve Agent Wallet'}
           </Button>
-
-          <div className="text-center">
-            <a
-              href="https://app.hyperliquid.xyz"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-tago-yellow-400 hover:underline"
-            >
-              Open Hyperliquid to deposit USDC
-            </a>
-          </div>
         </SwapPanel>
       </div>
     );
