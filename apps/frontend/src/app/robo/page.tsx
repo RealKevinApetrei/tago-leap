@@ -20,8 +20,10 @@ import { PerformanceChart } from '@/components/PerformanceChart';
 import { useHyperliquidBalance } from '@/hooks/useHyperliquidBalance';
 import { RiskManagementTab } from '@/components/RiskManagementTab';
 import { useOneClickSetup, SetupStep } from '@/hooks/useOneClickSetup';
+import { usePolicyValidation } from '@/hooks/usePolicyValidation';
 
-type TabType = 'trade' | 'portfolio' | 'risk' | 'history';
+type TabType = 'trade' | 'portfolio' | 'risk';
+type PortfolioView = 'positions' | 'history';
 // Trade mode is now auto-detected: pair (1v1) or basket (multiple assets per side)
 
 export default function RoboPage() {
@@ -104,8 +106,16 @@ export default function RoboPage() {
     reset: resetSetup,
   } = useOneClickSetup();
 
+  // Policy validation for risk tracking
+  const {
+    policy: policyLimits,
+    todayNotional,
+    remainingNotional,
+  } = usePolicyValidation(account?.id || null);
+
   // Tab state - sync with URL
   const [activeTab, setActiveTab] = useState<TabType>(urlTab || 'trade');
+  const [portfolioView, setPortfolioView] = useState<PortfolioView>('positions');
 
   // Sync tab with URL changes
   useEffect(() => {
@@ -338,6 +348,9 @@ export default function RoboPage() {
       } finally {
         setIsRefreshingAfterTrade(false);
       }
+
+      // Redirect to portfolio tab to show the new position
+      setActiveTab('portfolio');
     } catch (err: any) {
       console.error('Failed to execute trade:', err);
       const errorMessage = err.tradeError?.message || err.message || 'Failed to execute trade';
@@ -568,26 +581,6 @@ export default function RoboPage() {
           </SwapPanel>
         )}
 
-        {/* History Tab - Blurred without connection */}
-        {activeTab === 'history' && (
-          <SwapPanel title="Trade History" subtitle="Your past trades">
-            <div className="relative">
-              <div className="blur-sm pointer-events-none">
-                <div className="text-center py-8 text-white/40">
-                  <p className="text-sm">No trade history</p>
-                </div>
-              </div>
-              <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[2px] rounded-xl">
-                <div className="text-center">
-                  <p className="text-sm text-white/60 mb-3">Connect wallet to view history</p>
-                  <Button variant="yellow" onClick={openConnectModal}>
-                    Connect Wallet
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </SwapPanel>
-        )}
       </div>
     );
   }
@@ -665,17 +658,19 @@ export default function RoboPage() {
                     <p className="text-xs text-red-400/70 mt-0.5">
                       {step.error?.includes('rejected') || step.error?.includes('denied')
                         ? 'Signature cancelled - click below to try again'
-                        : step.id === 'auth'
-                        ? 'Couldn\'t sign in - click below to try again'
-                        : step.id === 'agentWallet'
-                        ? 'Couldn\'t create wallet - click below to retry'
-                        : step.id === 'agentApproval'
-                        ? 'Approval failed - make sure you have USDC deposited'
-                        : step.id === 'builderFee'
-                        ? 'Fee approval failed - click below to retry'
-                        : step.id === 'saltAccount'
-                        ? 'Account creation failed - click below to retry'
-                        : 'Something went wrong - click below to retry'
+                        : step.error || (
+                          step.id === 'auth'
+                          ? 'Couldn\'t sign in - click below to try again'
+                          : step.id === 'agentWallet'
+                          ? 'Couldn\'t create wallet - click below to retry'
+                          : step.id === 'agentApproval'
+                          ? 'Approval failed - click below to retry'
+                          : step.id === 'builderFee'
+                          ? 'Fee approval failed - click below to retry'
+                          : step.id === 'saltAccount'
+                          ? 'Account creation failed - click below to retry'
+                          : 'Something went wrong - click below to retry'
+                        )
                       }
                     </p>
                   )}
@@ -1126,166 +1121,312 @@ export default function RoboPage() {
         </SwapPanel>
       )}
 
-      {/* Portfolio Tab */}
+      {/* Portfolio Tab - Two Column Layout */}
       {activeTab === 'portfolio' && (
-        <SwapPanel title="Portfolio" subtitle="Your open positions and P&L">
-          {/* Portfolio Summary */}
-          <div className="bg-gradient-to-br from-white/[0.05] to-transparent border border-white/[0.08] rounded-xl p-4 space-y-3">
-            {/* Account Equity from Hyperliquid */}
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-white/40 font-light">Account Equity</span>
-              {balanceLoading ? (
-                <span className="text-sm text-white/40">Loading...</span>
-              ) : balanceError ? (
-                <span className="text-sm text-white/40">--</span>
-              ) : (
-                <span className="text-lg text-white font-medium">
-                  ${hlBalance?.equity?.toFixed(2) || '0.00'}
-                </span>
-              )}
-            </div>
+        <div className="w-full max-w-4xl mx-auto">
+          {/* Two Column Grid - Responsive */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Left Column: Stats & Risk */}
+            <div className="space-y-4">
+              {/* Account Summary Card */}
+              <div className="bg-gradient-to-br from-white/[0.05] to-transparent border border-white/[0.08] rounded-xl p-4 space-y-3">
+                <h3 className="text-xs text-white/50 font-medium uppercase tracking-wide">Account</h3>
 
-            {/* Available Balance */}
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-white/40 font-light">Available</span>
-              <span className="text-sm text-emerald-400">
-                ${hlBalance?.availableBalance?.toFixed(2) || '0.00'}
-              </span>
-            </div>
-
-            {/* Positions Value (if any) */}
-            {positions.length > 0 && (
-              <div className="flex justify-between items-center border-t border-white/[0.08] pt-3">
-                <span className="text-sm text-white/40 font-light">Positions Value</span>
-                <span className="text-lg text-white font-medium">${totalValue.toFixed(2)}</span>
-              </div>
-            )}
-
-            {/* Unrealized P&L */}
-            {(hlBalance?.unrealizedPnl !== 0 || positions.length > 0) && (
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-white/40 font-light">Unrealized P&L</span>
-                <div className="flex items-center gap-2">
-                  <span className={`text-lg font-medium ${(hlBalance?.unrealizedPnl ?? totalPnl) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {(hlBalance?.unrealizedPnl ?? totalPnl) >= 0 ? '+' : ''}${(hlBalance?.unrealizedPnl ?? totalPnl).toFixed(2)}
-                  </span>
-                  {positions.length > 0 && (
-                    <span className={`text-sm ${totalPnl >= 0 ? 'text-green-400/60' : 'text-red-400/60'}`}>
-                      ({totalPnlPercent >= 0 ? '+' : ''}{totalPnlPercent.toFixed(1)}%)
+                {/* Account Equity */}
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-white/40 font-light">Equity</span>
+                  {balanceLoading ? (
+                    <span className="text-sm text-white/40">Loading...</span>
+                  ) : balanceError ? (
+                    <span className="text-sm text-white/40">--</span>
+                  ) : (
+                    <span className="text-lg text-white font-medium">
+                      ${hlBalance?.equity?.toFixed(2) || '0.00'}
                     </span>
                   )}
                 </div>
-              </div>
-            )}
-          </div>
 
-          {/* Positions Error with Retry */}
-          {positionsError && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4">
-              <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <div className="flex-1">
-                  <p className="text-sm text-red-400 font-medium">Failed to load positions</p>
-                  <p className="text-xs text-white/40 mt-1">{positionsError}</p>
-                  <Button variant="ghost" size="sm" onClick={refreshPositions} className="mt-2">
-                    Retry
-                  </Button>
+                {/* Available Balance */}
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-white/40 font-light">Available</span>
+                  <span className="text-sm text-emerald-400">
+                    ${hlBalance?.availableBalance?.toFixed(2) || '0.00'}
+                  </span>
                 </div>
-              </div>
-            </div>
-          )}
 
-          {/* Open Positions */}
-          <div className="space-y-2">
-            <h3 className="text-sm font-light text-white/70">Open Positions</h3>
-
-            {(positionsLoading || isRefreshingAfterTrade) ? (
-              <div className="text-center py-8">
-                <div className="inline-flex items-center gap-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/20 border-t-tago-yellow-400" />
-                  <p className="text-white/40 font-light">
-                    {isRefreshingAfterTrade ? 'Updating positions...' : 'Loading positions...'}
-                  </p>
-                </div>
-              </div>
-            ) : positions.length === 0 ? (
-              <div className="text-center py-8 bg-white/[0.02] rounded-xl border border-white/[0.05]">
-                <p className="text-white/40 font-light">No open positions</p>
-                <p className="text-xs text-white/30 mt-1">Execute a trade to see it here</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {positions.map((position) => (
-                  <div
-                    key={position.id}
-                    className="bg-white/[0.03] border border-white/[0.08] rounded-xl p-4 space-y-3"
-                  >
-                    {/* Position Header */}
-                    <div className="flex items-center justify-between">
+                {/* Unrealized P&L */}
+                <div className="flex justify-between items-center border-t border-white/[0.08] pt-3">
+                  <span className="text-sm text-white/40 font-light">Unrealized P&L</span>
+                  {(() => {
+                    const pnlValue = hlBalance?.unrealizedPnl ?? totalPnl;
+                    const equityBase = hlBalance?.equity ? hlBalance.equity - pnlValue : 0;
+                    const pnlPercent = equityBase > 0 ? (pnlValue / equityBase) * 100 : totalPnlPercent;
+                    return (
                       <div className="flex items-center gap-2">
-                        <Badge variant={position.pnl >= 0 ? 'success' : 'error'}>
-                          {position.pnl >= 0 ? '+' : ''}{position.pnlPercent.toFixed(1)}%
-                        </Badge>
-                        <span className="text-xs text-white/40">{position.leverage}x</span>
+                        <span className={`text-lg font-medium ${pnlValue >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {pnlValue >= 0 ? '+' : ''}${pnlValue.toFixed(2)}
+                        </span>
+                        <span className={`text-xs ${pnlValue >= 0 ? 'text-green-400/60' : 'text-red-400/60'}`}>
+                          ({pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(1)}%)
+                        </span>
                       </div>
-                      <span className={`text-sm font-medium ${position.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {position.pnl >= 0 ? '+' : ''}${position.pnl.toFixed(2)}
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Risk Metrics Card */}
+              <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4 space-y-3">
+                <h3 className="text-xs text-white/50 font-medium uppercase tracking-wide">Risk Status</h3>
+
+                {/* Drawdown Gauge */}
+                {policyLimits && (
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-white/50">Daily Notional</span>
+                      <span className="text-white/70">
+                        ${todayNotional.toFixed(0)} / ${policyLimits.maxDailyNotionalUsd.toLocaleString()}
                       </span>
                     </div>
-
-                    {/* Assets */}
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1">
-                        <div className="text-xs text-green-400/60 mb-1">Long</div>
-                        <div className="flex flex-wrap gap-1">
-                          {position.longAssets.map((asset) => (
-                            <span key={asset.asset} className="text-xs text-green-400 bg-green-500/10 px-2 py-0.5 rounded">
-                              {asset.asset}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="text-white/20 text-xs">vs</div>
-                      <div className="flex-1 text-right">
-                        <div className="text-xs text-red-400/60 mb-1">Short</div>
-                        <div className="flex flex-wrap justify-end gap-1">
-                          {position.shortAssets.map((asset) => (
-                            <span key={asset.asset} className="text-xs text-red-400 bg-red-500/10 px-2 py-0.5 rounded">
-                              {asset.asset}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
+                    <div className="h-2 bg-white/[0.08] rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          (todayNotional / policyLimits.maxDailyNotionalUsd) > 0.8
+                            ? 'bg-yellow-500'
+                            : (todayNotional / policyLimits.maxDailyNotionalUsd) > 0.9
+                            ? 'bg-red-500'
+                            : 'bg-emerald-500'
+                        }`}
+                        style={{ width: `${Math.min(100, (todayNotional / policyLimits.maxDailyNotionalUsd) * 100)}%` }}
+                      />
                     </div>
-
-                    {/* Position Details */}
-                    <div className="flex justify-between text-xs text-white/40">
-                      <span>Value: ${position.usdValue.toFixed(2)}</span>
-                      <span>Entry: {new Date(position.createdAt).toLocaleDateString()}</span>
-                    </div>
-
-                    {/* Close Button */}
-                    <Button
-                      variant="ghost"
-                      fullWidth
-                      size="sm"
-                      onClick={() => handleClosePosition(position.id)}
-                      loading={isClosing}
-                    >
-                      Close Position
-                    </Button>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                )}
 
-          <Button variant="ghost" fullWidth onClick={refreshPositions}>
-            Refresh Portfolio
-          </Button>
-        </SwapPanel>
+                {/* Account Health Bar */}
+                {hlBalance?.accountHealth !== undefined && (
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-white/50">Account Health</span>
+                      <span className={`font-medium ${
+                        hlBalance.accountHealth > 50 ? 'text-green-400' :
+                        hlBalance.accountHealth > 25 ? 'text-yellow-400' : 'text-red-400'
+                      }`}>
+                        {hlBalance.accountHealth.toFixed(0)}%
+                      </span>
+                    </div>
+                    <div className="h-2 bg-white/[0.08] rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          hlBalance.accountHealth > 50 ? 'bg-green-500' :
+                          hlBalance.accountHealth > 25 ? 'bg-yellow-500' : 'bg-red-500'
+                        }`}
+                        style={{ width: `${hlBalance.accountHealth}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Policy Limits */}
+                {policyLimits && (
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-white/[0.06]">
+                    <div>
+                      <span className="text-xs text-white/40">Max Leverage</span>
+                      <p className="text-sm text-white font-medium">{policyLimits.maxLeverage}x</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-white/40">Max Drawdown</span>
+                      <p className="text-sm text-white font-medium">{policyLimits.maxDrawdownPct}%</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Refresh Button */}
+              <Button variant="ghost" fullWidth size="sm" onClick={() => { refreshPositions(); refreshBalance(); }}>
+                Refresh Data
+              </Button>
+            </div>
+
+            {/* Right Column: Positions/History */}
+            <div className="space-y-3">
+              {/* Sub-tab Switcher */}
+              <div className="flex gap-1 bg-white/[0.03] rounded-lg p-1">
+                <button
+                  onClick={() => setPortfolioView('positions')}
+                  className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+                    portfolioView === 'positions'
+                      ? 'bg-tago-yellow-400 text-black'
+                      : 'text-white/60 hover:text-white hover:bg-white/[0.05]'
+                  }`}
+                >
+                  Positions ({positions.length})
+                </button>
+                <button
+                  onClick={() => setPortfolioView('history')}
+                  className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+                    portfolioView === 'history'
+                      ? 'bg-tago-yellow-400 text-black'
+                      : 'text-white/60 hover:text-white hover:bg-white/[0.05]'
+                  }`}
+                >
+                  History
+                </button>
+              </div>
+
+              {/* Positions View */}
+              {portfolioView === 'positions' && (
+                <div className="space-y-3">
+                  {/* Error State */}
+                  {positionsError && (
+                    <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3">
+                      <p className="text-sm text-red-400">{positionsError}</p>
+                      <Button variant="ghost" size="sm" onClick={refreshPositions} className="mt-2">
+                        Retry
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Loading State */}
+                  {(positionsLoading || isRefreshingAfterTrade) ? (
+                    <div className="text-center py-8 bg-white/[0.02] rounded-xl border border-white/[0.05]">
+                      <div className="inline-flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/20 border-t-tago-yellow-400" />
+                        <p className="text-white/40 font-light">
+                          {isRefreshingAfterTrade ? 'Updating...' : 'Loading...'}
+                        </p>
+                      </div>
+                    </div>
+                  ) : positions.length === 0 ? (
+                    <div className="text-center py-12 bg-white/[0.02] rounded-xl border border-white/[0.05]">
+                      <svg className="w-12 h-12 mx-auto text-white/20 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                      </svg>
+                      <p className="text-white/40 font-light">No open positions</p>
+                      <p className="text-xs text-white/30 mt-1">Execute a trade to see it here</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                      {positions.map((position) => (
+                        <div
+                          key={position.id}
+                          className="bg-white/[0.03] border border-white/[0.08] rounded-xl p-3 space-y-2"
+                        >
+                          {/* Header */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Badge variant={position.pnl >= 0 ? 'success' : 'error'}>
+                                {position.pnl >= 0 ? '+' : ''}{position.pnlPercent.toFixed(1)}%
+                              </Badge>
+                              <span className="text-xs text-white/40">{position.leverage}x</span>
+                            </div>
+                            <span className={`text-sm font-medium ${position.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {position.pnl >= 0 ? '+' : ''}${position.pnl.toFixed(2)}
+                            </span>
+                          </div>
+
+                          {/* Assets Row */}
+                          <div className="flex items-center gap-2 text-xs">
+                            <div className="flex gap-1">
+                              {position.longAssets.map((asset) => (
+                                <span key={asset.asset} className="text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded">
+                                  {asset.asset}
+                                </span>
+                              ))}
+                            </div>
+                            {position.shortAssets.length > 0 && (
+                              <>
+                                <span className="text-white/20">vs</span>
+                                <div className="flex gap-1">
+                                  {position.shortAssets.map((asset) => (
+                                    <span key={asset.asset} className="text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded">
+                                      {asset.asset}
+                                    </span>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </div>
+
+                          {/* Details */}
+                          <div className="flex justify-between items-center text-xs text-white/40">
+                            <span>${position.usdValue.toFixed(2)}</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleClosePosition(position.id)}
+                              loading={isClosing}
+                              className="!py-1 !px-2 text-xs"
+                            >
+                              Close
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* History View */}
+              {portfolioView === 'history' && (
+                <div className="space-y-2">
+                  {accountLoading ? (
+                    <div className="text-center py-8 bg-white/[0.02] rounded-xl border border-white/[0.05]">
+                      <p className="text-white/40 font-light">Loading history...</p>
+                    </div>
+                  ) : trades.length === 0 ? (
+                    <div className="text-center py-12 bg-white/[0.02] rounded-xl border border-white/[0.05]">
+                      <svg className="w-12 h-12 mx-auto text-white/20 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <p className="text-white/40 font-light">No trade history</p>
+                      <p className="text-xs text-white/30 mt-1">Your trades will appear here</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                      {trades.map((trade) => (
+                        <div
+                          key={trade.id}
+                          className="p-3 bg-white/[0.03] rounded-lg border border-white/[0.08] hover:border-white/[0.12] transition-colors"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <p className="text-sm text-white font-light truncate">
+                                  {trade.narrative_id || 'Direct Trade'}
+                                </p>
+                                {trade.source === 'salt' && (
+                                  <span className="text-[10px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">
+                                    Robo
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-white/40">
+                                {trade.direction} · ${trade.stake_usd} · {new Date(trade.created_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <Badge
+                              variant={
+                                trade.status === 'completed' ? 'success' :
+                                trade.status === 'pending' ? 'info' : 'error'
+                              }
+                            >
+                              {trade.status}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <Button variant="ghost" fullWidth size="sm" onClick={refreshTrades}>
+                    Refresh History
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Risk Management Tab */}
@@ -1302,61 +1443,6 @@ export default function RoboPage() {
           showToast={showToast}
           allowedTokens={allowedTokens}
         />
-      )}
-
-      {/* History Tab */}
-      {activeTab === 'history' && (
-        <SwapPanel title="Trade History" subtitle="Your recent trades">
-          {accountLoading ? (
-            <div className="text-center py-8">
-              <p className="text-white/40 font-light">Loading trade history...</p>
-            </div>
-          ) : trades.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-white/40 font-light">No trades yet</p>
-              <p className="text-xs text-white/30 mt-1">Execute a trade to see it here</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {trades.map((trade) => (
-                <div
-                  key={trade.id}
-                  className="p-3 bg-white/[0.03] rounded-lg border border-white/[0.08] hover:border-white/[0.12] transition-colors"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="text-sm text-white font-light truncate">
-                          {trade.narrative_id || 'Direct Trade'}
-                        </p>
-                        {trade.source === 'salt' && (
-                          <span className="text-[10px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">
-                            Robo
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-white/40">
-                        {trade.direction} · ${trade.stake_usd} · {new Date(trade.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <Badge
-                      variant={
-                        trade.status === 'completed' ? 'success' :
-                        trade.status === 'pending' ? 'info' : 'error'
-                      }
-                    >
-                      {trade.status}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <Button variant="ghost" fullWidth onClick={refreshTrades}>
-            Refresh History
-          </Button>
-        </SwapPanel>
       )}
 
       {/* Advanced Details - Collapsible section at bottom */}

@@ -339,6 +339,20 @@ export async function POST(
           { status: 400 }
         );
       }
+
+      // Check drawdown limit if policy has max_drawdown_pct set
+      if (policy.max_drawdown_pct && (account as any).current_drawdown_pct >= policy.max_drawdown_pct) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'DRAWDOWN_LIMIT',
+              message: `Account drawdown ${((account as any).current_drawdown_pct || 0).toFixed(1)}% exceeds policy limit of ${policy.max_drawdown_pct}%`,
+            },
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // Validate minimum position sizes against Hyperliquid requirements

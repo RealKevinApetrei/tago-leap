@@ -70,8 +70,13 @@ export function useHyperliquidBalance(): UseHyperliquidBalanceReturn {
       // Calculate available balance and health
       const availableBalance = accountValue - totalMarginUsed;
 
-      // Calculate unrealized PnL (account value - raw USD balance)
-      const unrealizedPnl = accountValue - totalRawUsd;
+      // Calculate unrealized PnL by summing from all positions
+      // This is the correct approach - each position has its own unrealizedPnl
+      const assetPositions = data.assetPositions || [];
+      const unrealizedPnl = assetPositions.reduce((sum: number, ap: any) => {
+        const positionPnl = parseFloat(ap.position?.unrealizedPnl || '0');
+        return sum + positionPnl;
+      }, 0);
 
       // Maintenance margin is typically ~5% of position notional
       const maintenanceMargin = totalNtlPos * 0.05;

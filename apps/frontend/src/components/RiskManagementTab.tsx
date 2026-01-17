@@ -14,6 +14,8 @@ interface RiskManagementTabProps {
   setMaxDailyNotional: (value: string) => void;
   maxDrawdown: string;
   setMaxDrawdown: (value: string) => void;
+  autoCloseEnabled?: boolean;
+  setAutoCloseEnabled?: (value: boolean) => void;
   savingPolicy: boolean;
   onSavePolicy: (tokens: string[]) => Promise<void>;
   showToast: (type: 'error' | 'success', message: string) => void;
@@ -27,6 +29,8 @@ export function RiskManagementTab({
   setMaxDailyNotional,
   maxDrawdown,
   setMaxDrawdown,
+  autoCloseEnabled = false,
+  setAutoCloseEnabled,
   savingPolicy,
   onSavePolicy,
   showToast,
@@ -139,6 +143,30 @@ export function RiskManagementTab({
           onChange={(e) => setMaxDailyNotional(e.target.value)}
           helperText="Maximum total position size per day"
         />
+
+        {/* Auto-Close Toggle */}
+        {setAutoCloseEnabled && (
+          <div className="flex items-center justify-between p-3 bg-white/[0.02] rounded-xl border border-white/[0.06] mt-4">
+            <div>
+              <span className="text-sm text-white font-medium">Auto-close on drawdown</span>
+              <p className="text-xs text-white/40 mt-0.5">
+                Automatically close all positions if drawdown exceeds your limit
+              </p>
+            </div>
+            <button
+              onClick={() => setAutoCloseEnabled(!autoCloseEnabled)}
+              className={`relative w-11 h-6 rounded-full transition-colors ${
+                autoCloseEnabled ? 'bg-tago-yellow-400' : 'bg-white/20'
+              }`}
+            >
+              <span
+                className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                  autoCloseEnabled ? 'left-6' : 'left-1'
+                }`}
+              />
+            </button>
+          </div>
+        )}
       </SwapPanel>
 
       {/* Allowed Tokens */}

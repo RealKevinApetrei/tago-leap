@@ -209,6 +209,74 @@ export async function getStrategiesByAccountId(
   return data || [];
 }
 
+export interface EquityUpdate {
+  peak_equity: number;
+  current_drawdown_pct: number;
+  last_equity_update: string;
+}
+
+export async function updateSaltAccountEquity(
+  supabase: SupabaseAdminClient,
+  accountId: string,
+  equity: number
+): Promise<EquityUpdate> {
+  // Get current account
+  const { data: account, error: accountError } = await supabase
+    .from('salt_accounts')
+    .select('peak_equity')
+    .eq('id', accountId)
+    .single();
+
+  if (accountError) {
+    throw new Error(`Failed to get salt account: ${accountError.message}`);
+  }
+
+  // Calculate new peak and drawdown
+  const currentPeak = account?.peak_equity || 0;
+  const newPeak = Math.max(currentPeak, equity);
+  const drawdown = newPeak > 0 ? ((newPeak - equity) / newPeak) * 100 : 0;
+  const now = new Date().toISOString();
+
+  // Update the account
+  const { error: updateError } = await supabase
+    .from('salt_accounts')
+    .update({
+      peak_equity: newPeak,
+      current_drawdown_pct: Math.max(0, drawdown),
+      last_equity_update: now,
+      updated_at: now,
+    })
+    .eq('id', accountId);
+
+  if (updateError) {
+    throw new Error(`Failed to update salt account equity: ${updateError.message}`);
+  }
+
+  return {
+    peak_equity: newPeak,
+    current_drawdown_pct: Math.max(0, drawdown),
+    last_equity_update: now,
+  };
+}
+
+export async function getActiveSaltAccounts(
+  supabase: SupabaseAdminClient
+): Promise<(SaltAccount & { user_wallet: string })[]> {
+  const { data, error } = await supabase
+    .from('salt_accounts')
+    .select('*, users!inner(wallet_address)')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw new Error(`Failed to get active salt accounts: ${error.message}`);
+  }
+
+  return (data || []).map(account => ({
+    ...account,
+    user_wallet: (account as any).users?.wallet_address,
+  }));
+}
+
 export async function getStrategyRunsByAccountId(
   supabase: SupabaseAdminClient,
   saltAccountId: string,

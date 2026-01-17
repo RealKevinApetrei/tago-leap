@@ -186,11 +186,6 @@ export function useOneClickSetup(): UseOneClickSetupReturn {
 
         await approveAgentWallet(walletAddr);
 
-        // Check for approval error
-        if (agentWalletError) {
-          throw new Error(agentWalletError);
-        }
-
         updateStep('agentApproval', 'completed');
         console.log('[useOneClickSetup] Agent approved on Hyperliquid');
       }
@@ -202,11 +197,6 @@ export function useOneClickSetup(): UseOneClickSetupReturn {
 
         await approveBuilderFee();
 
-        // Check for approval error
-        if (builderFeeError) {
-          throw new Error(builderFeeError);
-        }
-
         updateStep('builderFee', 'completed');
         console.log('[useOneClickSetup] Builder fee approved');
       }
@@ -217,11 +207,6 @@ export function useOneClickSetup(): UseOneClickSetupReturn {
         updateStep('saltAccount', 'in_progress');
 
         await createAccount();
-
-        // Check for creation error
-        if (saltAccountError) {
-          throw new Error(saltAccountError);
-        }
 
         updateStep('saltAccount', 'completed');
         console.log('[useOneClickSetup] Salt account created');

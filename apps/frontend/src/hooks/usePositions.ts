@@ -2,18 +2,18 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { useAccount } from 'wagmi';
-import { pearApi } from '@/lib/api';
 
 // Auto-refresh interval in milliseconds (15 seconds)
 const AUTO_REFRESH_INTERVAL = 15_000;
 
-// Position types matching PearPosition from shared types
+// Position types
 export interface PositionAsset {
   asset: string;
   weight: number;
   size: number;
   entryPrice: number;
   currentPrice: number;
+  pnl: number;
 }
 
 export interface Position {
@@ -27,6 +27,24 @@ export interface Position {
   status: 'open' | 'closed' | 'liquidated';
   createdAt: string;
   updatedAt: string;
+}
+
+// Hyperliquid asset position structure
+interface HyperliquidAssetPosition {
+  position: {
+    coin: string;
+    szi: string;        // Size (negative for short)
+    entryPx: string;    // Entry price
+    positionValue: string;
+    unrealizedPnl: string;
+    returnOnEquity: string;
+    liquidationPx: string | null;
+    leverage: {
+      type: string;
+      value: number;
+    };
+    maxLeverage: number;
+  };
 }
 
 interface UsePositionsReturn {
@@ -50,7 +68,7 @@ export function usePositions(): UsePositionsReturn {
   const [isClosing, setIsClosing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch positions
+  // Fetch positions directly from Hyperliquid
   const refresh = useCallback(async (silent = false) => {
     if (!address) {
       setPositions([]);
@@ -64,10 +82,70 @@ export function usePositions(): UsePositionsReturn {
     setError(null);
 
     try {
-      const data = await pearApi.getPositions(address);
-      // Filter only open positions
-      const openPositions = (data || []).filter((p: Position) => p.status === 'open');
-      setPositions(openPositions);
+      // Fetch clearinghouse state from Hyperliquid
+      const response = await fetch('https://api.hyperliquid.xyz/info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'clearinghouseState',
+          user: address,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Hyperliquid API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('[usePositions] Hyperliquid response:', data);
+
+      const assetPositions: HyperliquidAssetPosition[] = data.assetPositions || [];
+
+      // Filter only positions with non-zero size
+      const activePositions = assetPositions.filter(ap => {
+        const size = parseFloat(ap.position.szi);
+        return size !== 0;
+      });
+
+      console.log('[usePositions] Active positions:', activePositions.length);
+
+      // Convert Hyperliquid positions to our format
+      const normalizedPositions: Position[] = activePositions.map((ap, index) => {
+        const pos = ap.position;
+        const size = parseFloat(pos.szi);
+        const entryPrice = parseFloat(pos.entryPx);
+        const positionValue = parseFloat(pos.positionValue);
+        const unrealizedPnl = parseFloat(pos.unrealizedPnl);
+        const roe = parseFloat(pos.returnOnEquity) * 100; // Convert to percentage
+        const leverage = pos.leverage?.value || 1;
+
+        const isLong = size > 0;
+
+        // Create the position asset
+        const positionAsset: PositionAsset = {
+          asset: pos.coin,
+          weight: 1,
+          size: Math.abs(size),
+          entryPrice,
+          currentPrice: positionValue / Math.abs(size), // Calculate current price
+          pnl: unrealizedPnl,
+        };
+
+        return {
+          id: `hl-${pos.coin}-${index}`,
+          longAssets: isLong ? [positionAsset] : [],
+          shortAssets: isLong ? [] : [positionAsset],
+          leverage,
+          usdValue: Math.abs(positionValue),
+          pnl: unrealizedPnl,
+          pnlPercent: roe,
+          status: 'open' as const,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      });
+
+      setPositions(normalizedPositions);
     } catch (err: any) {
       console.error('[usePositions] Failed to fetch positions:', err);
       setError(err?.message || 'Failed to fetch positions');
@@ -77,7 +155,7 @@ export function usePositions(): UsePositionsReturn {
     }
   }, [address]);
 
-  // Close a position
+  // Close a position - this would need to go through Pear/Hyperliquid API
   const closePosition = useCallback(async (positionId: string) => {
     if (!address) {
       setError('Wallet not connected');
@@ -88,16 +166,29 @@ export function usePositions(): UsePositionsReturn {
     setError(null);
 
     try {
-      await pearApi.closePosition(positionId, address);
+      // Extract asset from position ID (format: hl-COIN-index)
+      const parts = positionId.split('-');
+      const coin = parts[1];
+
+      // Find the position
+      const position = positions.find(p => p.id === positionId);
+      if (!position) {
+        throw new Error('Position not found');
+      }
+
+      // TODO: Implement close via Pear API or direct Hyperliquid
+      // For now, show an error message directing users to Hyperliquid
+      throw new Error(`Please close ${coin} position directly on Hyperliquid`);
+
       // Refresh positions after closing
-      await refresh();
+      // await refresh();
     } catch (err: any) {
       console.error('[usePositions] Failed to close position:', err);
       setError(err?.message || 'Failed to close position');
     } finally {
       setIsClosing(false);
     }
-  }, [address, refresh]);
+  }, [address, positions]);
 
   // Load positions on mount and when address changes
   useEffect(() => {
@@ -109,14 +200,13 @@ export function usePositions(): UsePositionsReturn {
     }
   }, [isConnected, address, refresh]);
 
-  // Auto-refresh polling - picks up position changes made on Hyperliquid directly
+  // Auto-refresh polling
   useEffect(() => {
     if (!isConnected || !address) {
       return;
     }
 
     const intervalId = setInterval(() => {
-      // Silent refresh - don't show loading state for auto-refresh
       refresh(true);
     }, AUTO_REFRESH_INTERVAL);
 

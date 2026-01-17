@@ -96,9 +96,9 @@ export function useBuilderFee(): UseBuilderFeeReturn {
       return;
     }
 
-    // Use Arbitrum mainnet (42161) as default, fallback to connected chain if it's supported
-    const signingChainId = SUPPORTED_CHAIN_IDS.includes(chainId) ? chainId : 42161;
-    const signatureChainIdHex = `0x${signingChainId.toString(16)}`;
+    // Use the wallet's actual connected chainId - Hyperliquid accepts signatures from any chain
+    // The signatureChainId tells Hyperliquid which chain was used to sign
+    const signatureChainIdHex = `0x${chainId.toString(16)}`;
 
     setIsApproving(true);
     setError(null);
@@ -106,11 +106,11 @@ export function useBuilderFee(): UseBuilderFeeReturn {
     try {
       const nonce = Date.now();
 
-      // EIP-712 domain for Hyperliquid - chainId must match signatureChainId
+      // EIP-712 domain for Hyperliquid - chainId must match wallet's connected chain
       const domain = {
         name: 'HyperliquidSignTransaction',
         version: '1',
-        chainId: signingChainId,
+        chainId: chainId,
         verifyingContract: '0x0000000000000000000000000000000000000000' as `0x${string}`,
       };
 
@@ -135,7 +135,7 @@ export function useBuilderFee(): UseBuilderFeeReturn {
         builder: PEAR_BUILDER_ADDRESS,
         maxFeeRate: MAX_FEE_RATE,
         nonce,
-        chainId: signingChainId,
+        chainId,
         signatureChainIdHex,
       });
 
@@ -189,20 +189,24 @@ export function useBuilderFee(): UseBuilderFeeReturn {
       }
 
       // Check for error in response body
+      let responseData: any;
       try {
-        const responseData = JSON.parse(responseText);
-        if (responseData.status === 'err') {
-          throw new Error(responseData.response || 'Approval failed');
-        }
+        responseData = JSON.parse(responseText);
       } catch {
         // Response might not be JSON, that's okay
+      }
+
+      if (responseData?.status === 'err') {
+        throw new Error(responseData.response || 'Approval failed');
       }
 
       setIsApproved(true);
       console.log('[useBuilderFee] Builder fee approved successfully');
     } catch (err: any) {
       console.error('[useBuilderFee] Approval failed:', err);
-      setError(err?.message || 'Failed to approve builder fee');
+      const errorMessage = err?.message || 'Failed to approve builder fee';
+      setError(errorMessage);
+      throw new Error(errorMessage);
     } finally {
       setIsApproving(false);
     }

@@ -405,4 +405,17 @@ export const saltApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  /**
+   * Update account equity and track drawdown.
+   * Called when balance changes to maintain peak equity tracking.
+   */
+  updateEquity: (accountId: string, equity: number) =>
+    fetchApi<{ peak_equity: number; current_drawdown_pct: number; last_equity_update: string }>(
+      `${config.saltServiceUrl}/accounts/${accountId}/update-equity`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ equity }),
+      }
+    ),
 };
