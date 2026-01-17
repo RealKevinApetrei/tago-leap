@@ -120,6 +120,12 @@ export async function tradesRoutes(app: FastifyInstance) {
       return reply.badRequest('Leverage must be between 1 and 100');
     }
 
+    // Hyperliquid requires minimum $10 notional
+    const notional = stakeUsd * leverage;
+    if (notional < 10) {
+      return reply.badRequest(`Minimum notional is $10. Your trade is $${notional.toFixed(2)} (${stakeUsd} × ${leverage}x). Hyperliquid rejects smaller orders.`);
+    }
+
     // If source is 'salt', require accountRef
     if (source === 'salt' && !accountRef) {
       return reply.badRequest('accountRef is required when source is "salt"');
@@ -184,11 +190,34 @@ export async function tradesRoutes(app: FastifyInstance) {
     });
 
     try {
+      app.log.info({
+        msg: 'Executing trade via Pear API',
+        tradeId: trade.id,
+        userWallet: userWalletAddress,
+        source,
+        accountRef,
+        orderPayload: {
+          leverage: orderPayload.leverage,
+          usdValue: orderPayload.usdValue,
+          longAssets: orderPayload.longAssets,
+          shortAssets: orderPayload.shortAssets,
+          slippage: orderPayload.slippage,
+          executionType: orderPayload.executionType,
+        },
+      });
+
       // Execute trade via Pear API
       const pearResponse = await openPosition(accessToken, orderPayload);
 
       // Determine success based on response - Pear returns fills array for successful trades
       const isSuccess = pearResponse.fills && pearResponse.fills.length > 0;
+
+      app.log.info({
+        msg: isSuccess ? 'Trade executed successfully' : 'Trade executed but no fills',
+        tradeId: trade.id,
+        fillCount: pearResponse.fills?.length || 0,
+        fills: pearResponse.fills,
+      });
 
       // Update trade with response
       const updatedTrade = await updateTrade(app.supabase, trade.id, {
@@ -202,14 +231,29 @@ export async function tradesRoutes(app: FastifyInstance) {
       };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
+      const errorStack = err instanceof Error ? err.stack : undefined;
+
+      app.log.error({
+        msg: 'Trade execution failed',
+        tradeId: trade.id,
+        userWallet: userWalletAddress,
+        source,
+        accountRef,
+        error: errorMessage,
+        stack: errorStack,
+        orderPayload: {
+          leverage: orderPayload.leverage,
+          usdValue: orderPayload.usdValue,
+          longAssets: orderPayload.longAssets,
+          shortAssets: orderPayload.shortAssets,
+        },
+      });
 
       // Update trade as failed
       await updateTrade(app.supabase, trade.id, {
         status: 'failed',
         pear_response: { error: errorMessage },
       });
-
-      app.log.error(err, 'Trade execution failed');
 
       // Return the actual error message to help debugging
       return reply.internalServerError(errorMessage || 'Trade execution failed');

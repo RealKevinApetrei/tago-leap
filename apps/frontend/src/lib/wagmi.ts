@@ -1,5 +1,6 @@
 import { getDefaultConfig } from '@rainbow-me/rainbowkit';
 import { defineChain } from 'viem';
+import { cookieStorage, createStorage } from 'wagmi';
 import {
   mainnet,
   arbitrum,
@@ -70,6 +71,10 @@ export const config = getDefaultConfig({
     blast,
   ],
   ssr: true,
+  // Use cookie storage to persist connection across page refreshes
+  storage: createStorage({
+    storage: cookieStorage,
+  }),
 });
 
 declare module 'wagmi' {

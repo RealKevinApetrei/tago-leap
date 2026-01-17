@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAccount } from 'wagmi';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { ConnectButton, useConnectModal } from '@rainbow-me/rainbowkit';
 import { SwapPanel } from '@/components/ui/SwapPanel';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -17,12 +18,16 @@ import { usePositions } from '@/hooks/usePositions';
 import { useStrategies } from '@/hooks/useStrategies';
 import { PerformanceChart } from '@/components/PerformanceChart';
 import { useHyperliquidBalance } from '@/hooks/useHyperliquidBalance';
+import { RiskManagementTab } from '@/components/RiskManagementTab';
 
-type TabType = 'trade' | 'portfolio' | 'settings' | 'history';
+type TabType = 'trade' | 'portfolio' | 'risk' | 'history';
 type TradeMode = 'pair' | 'basket';
 
 export default function RoboPage() {
+  const searchParams = useSearchParams();
+  const urlTab = searchParams.get('tab') as TabType | null;
   const { isConnected, address } = useAccount();
+  const { openConnectModal } = useConnectModal();
   const {
     isAuthenticated,
     isLoading: authLoading,
@@ -86,8 +91,15 @@ export default function RoboPage() {
     refresh: refreshBalance,
   } = useHyperliquidBalance();
 
-  // Tab state
-  const [activeTab, setActiveTab] = useState<TabType>('trade');
+  // Tab state - sync with URL
+  const [activeTab, setActiveTab] = useState<TabType>(urlTab || 'trade');
+
+  // Sync tab with URL changes
+  useEffect(() => {
+    if (urlTab && urlTab !== activeTab) {
+      setActiveTab(urlTab);
+    }
+  }, [urlTab, activeTab]);
 
   // AI Trade Builder state
   const [prompt, setPrompt] = useState('');
@@ -100,10 +112,40 @@ export default function RoboPage() {
   const [tradeResult, setTradeResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Toast state - unified to prevent stacking, auto-dismisses based on text length
+  type ToastType = { type: 'error' | 'success'; message: string; id?: string; details?: string[] } | null;
+  const [toast, setToast] = useState<ToastType>(null);
+
+  // Calculate toast duration based on text length (reading time)
+  const calculateToastDuration = useCallback((message: string, details?: string[]) => {
+    // Base time + time per word (average reading speed ~200 words/min = ~3 words/sec)
+    const allText = message + (details ? ' ' + details.join(' ') : '');
+    const wordCount = allText.split(/\s+/).length;
+    const readingTime = Math.ceil(wordCount / 3) * 1000; // ~3 words per second
+    // Minimum 4s, maximum 15s
+    return Math.min(Math.max(4000, readingTime + 2000), 15000);
+  }, []);
+
+  // Helper to show toast (replaces any existing toast)
+  const showToast = useCallback((type: 'error' | 'success', message: string, id?: string, details?: string[]) => {
+    setToast({ type, message, id, details });
+  }, []);
+
+  // Auto-dismiss toast based on text length
+  useEffect(() => {
+    if (!toast) return;
+    const duration = calculateToastDuration(toast.message, toast.details);
+    const timer = setTimeout(() => setToast(null), duration);
+    return () => clearTimeout(timer);
+  }, [toast, calculateToastDuration]);
+
   // Policy state
   const [maxLeverage, setMaxLeverage] = useState('5');
   const [maxDailyNotional, setMaxDailyNotional] = useState('10000');
   const [maxDrawdown, setMaxDrawdown] = useState('10');
+
+  // Advanced section state
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [savingPolicy, setSavingPolicy] = useState(false);
 
   // Get AI suggestion
@@ -142,74 +184,125 @@ export default function RoboPage() {
     });
   };
 
-  // Execute trade through Salt account
+  // Execute trade through Salt account (with policy validation)
   const handleExecute = async () => {
     if (!address || !suggestion || !account) {
-      setError('Please ensure you have a Salt account');
+      showToast('error', 'Please ensure you have a Salt account');
       return;
     }
 
     const stake = parseFloat(stakeUsd);
-    if (stake < 1) {
-      setError('Minimum stake is $1');
+    const notionalRequired = stake * leverage;
+
+    // Hyperliquid requires minimum $10 notional
+    if (notionalRequired < 10) {
+      showToast('error', `Minimum notional is $10. Your trade is $${notionalRequired.toFixed(2)} (${stake} × ${leverage}x). Increase stake or leverage.`);
       return;
     }
 
-    // Check against policy limits
+    // Check against policy limits (client-side check, Salt will also validate server-side)
     const maxLev = parseInt(maxLeverage) || 5;
     if (leverage > maxLev) {
-      setError(`Leverage exceeds your policy limit of ${maxLev}x`);
+      showToast('error', `Leverage exceeds your policy limit of ${maxLev}x`);
       return;
     }
 
     // Check balance before executing
-    const notionalRequired = stake * leverage;
     if (hlBalance && hlBalance.availableBalance < notionalRequired) {
-      setError(`Insufficient balance. You need $${notionalRequired.toFixed(2)} but only have $${hlBalance.availableBalance.toFixed(2)} available. Please deposit more USDC to Hyperliquid.`);
+      showToast('error', `Insufficient balance. You need $${notionalRequired.toFixed(2)} but only have $${hlBalance.availableBalance.toFixed(2)} available.`);
       return;
     }
 
     setExecuting(true);
-    setError(null);
+    setToast(null);
 
     try {
-      const trade = await pearApi.executeTrade({
-        userWalletAddress: address,
+      // Route through Salt service for policy validation before executing via Pear
+      const result = await saltApi.executePairTrade(account.id, {
         longAssets: suggestion.longAssets.map(a => ({ asset: a.asset, weight: a.weight })),
         shortAssets: suggestion.shortAssets.map(a => ({ asset: a.asset, weight: a.weight })),
         stakeUsd: stake,
         leverage,
       });
+
+      const trade = result.trade || result;
       setTradeResult(trade);
       setSuggestion(null);
       setPrompt('');
-      // Refresh trade history and positions
+
+      // Show success toast
+      showToast('success', trade.status === 'completed' ? 'Trade executed successfully!' : `Trade submitted (${trade.status})`, trade.id);
+
+      // Refresh data
       refreshTrades();
       refreshPositions();
+      refreshBalance();
     } catch (err: any) {
       console.error('Failed to execute trade:', err);
-      setError(err.message || 'Failed to execute trade. Please try again.');
+      const errorMessage = err.tradeError?.message || err.message || 'Failed to execute trade';
+
+      // Parse policy violation errors for better display
+      if (errorMessage.includes('Policy violation')) {
+        // Extract individual violations from the message
+        const violations = errorMessage
+          .replace('Policy violation: ', '')
+          .replace('Policy violation:', '')
+          .split(', ')
+          .filter((v: string) => v.trim())
+          .map((v: string) => {
+            // Make messages more actionable
+            if (v.includes('Leverage') && v.includes('exceeds')) {
+              const match = v.match(/(\d+)x exceeds.*?(\d+)x/);
+              if (match) {
+                return `Leverage too high: Using ${match[1]}x but your limit is ${match[2]}x. Go to Risk tab to increase.`;
+              }
+            }
+            if (v.includes('not in allowed pairs')) {
+              const assetMatch = v.match(/Asset (\w+) is not/);
+              if (assetMatch) {
+                return `${assetMatch[1]} is not in your allowed tokens. Add it in the Risk tab.`;
+              }
+            }
+            if (v.includes('notional') && v.includes('exceeds')) {
+              return `Daily trading limit exceeded. Wait until tomorrow or increase limit in Risk tab.`;
+            }
+            return v;
+          });
+
+        showToast('error', 'Trade blocked by your risk settings', undefined, violations);
+      } else {
+        showToast('error', errorMessage);
+      }
     } finally {
       setExecuting(false);
     }
   };
 
+  // Allowed tokens state (will be managed by RiskManagementTab)
+  const [allowedTokens, setAllowedTokens] = useState<string[]>([
+    'BTC', 'ETH', 'SOL', 'LINK', 'ARB', 'OP', 'AVAX', 'DOGE', 'PEPE', 'WIF'
+  ]);
+
   // Save policy
-  const handleSavePolicy = async () => {
+  const handleSavePolicy = async (tokens?: string[]) => {
     if (!account) return;
 
+    const tokensToSave = tokens || allowedTokens;
     setSavingPolicy(true);
     try {
       await saltApi.setPolicy(account.id, {
         maxLeverage: parseFloat(maxLeverage),
         maxDailyNotionalUsd: parseFloat(maxDailyNotional),
         maxDrawdownPct: parseFloat(maxDrawdown),
-        allowedPairs: ['BTC-USD', 'ETH-USD', 'SOL-USD'],
+        allowedPairs: tokensToSave,
       });
-      setError(null);
+      if (tokens) {
+        setAllowedTokens(tokens);
+      }
+      showToast('success', 'Risk settings saved successfully');
     } catch (err) {
       console.error('Failed to save policy:', err);
-      setError('Failed to save policy');
+      showToast('error', 'Failed to save policy');
     } finally {
       setSavingPolicy(false);
     }
@@ -220,30 +313,167 @@ export default function RoboPage() {
     await closePosition(positionId);
   };
 
-  // Step 1: Connect Wallet
+  // Determine if user needs setup (for showing setup prompts)
+  const needsSetup = !isConnected || !isAuthenticated || (!agentWalletExists && !agentWalletLoading) || (!builderFeeApproved && !builderFeeLoading) || (!account && !accountLoading);
+
+  // Helper component for Connect Wallet button on action buttons
+  const ConnectWalletPrompt = ({ className = '' }: { className?: string }) => (
+    <Button
+      variant="yellow"
+      fullWidth
+      size="lg"
+      onClick={openConnectModal}
+      className={className}
+    >
+      Connect Wallet
+    </Button>
+  );
+
+  // If not connected, show main UI with connect wallet prompts
   if (!isConnected) {
     return (
       <div className="space-y-6">
-        <SwapPanel title="Connect Wallet" subtitle="Start your robo trading journey">
-          <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08]">
-            <h3 className="font-light text-white mb-2">
-              What is <span className="italic text-tago-yellow-400">AI Robo Trading</span>?
-            </h3>
-            <p className="text-sm text-white/60 font-light leading-relaxed">
-              Describe your market thesis in plain English, get AI-powered trade suggestions,
-              and execute pair trades on Hyperliquid with built-in risk management.
-            </p>
+        {/* Toast Notification */}
+        {toast && (
+          <div className="fixed right-4 top-1/2 -translate-y-1/2 z-50 max-w-md animate-in slide-in-from-right fade-in duration-300">
+            <div className={`relative backdrop-blur-sm border rounded-xl p-4 shadow-2xl ${
+              toast.type === 'error'
+                ? 'bg-red-500/95 border-red-400/50 shadow-red-500/20'
+                : 'bg-green-500/95 border-green-400/50 shadow-green-500/20'
+            }`}>
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                  {toast.type === 'error' ? (
+                    <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white mb-1">
+                    {toast.type === 'error' ? 'Error' : 'Success'}
+                  </p>
+                  <p className="text-sm text-white/90 font-light leading-relaxed">{toast.message}</p>
+                </div>
+                <button onClick={() => setToast(null)} className="flex-shrink-0 text-white/70 hover:text-white">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
-          <div className="flex justify-center">
-            <ConnectButton />
-          </div>
-        </SwapPanel>
+        )}
+
+        {/* Narrative Trading Tab */}
+        {activeTab === 'trade' && (
+          <SwapPanel title="Narrative Trading" subtitle="Describe your thesis, get a pair trade">
+            <div className="space-y-2">
+              <label className="block text-sm font-light text-white/70">Your Trading Idea</label>
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="e.g., I think AI tokens will outperform ETH in the coming weeks..."
+                className="w-full h-24 bg-white/[0.03] border border-white/[0.08] rounded-xl px-4 py-3 text-white font-light placeholder:text-white/30 focus:outline-none focus:border-tago-yellow-400/50 focus:ring-1 focus:ring-tago-yellow-400/20 resize-none transition-all"
+                maxLength={1000}
+              />
+              <div className="flex justify-between items-center">
+                <p className="text-xs text-white/40 font-light">
+                  Examples: "SOL ecosystem is heating up", "DeFi will recover vs majors"
+                </p>
+                <span className="text-xs text-white/40">{prompt.length}/1000</span>
+              </div>
+            </div>
+
+            <ConnectWalletPrompt />
+          </SwapPanel>
+        )}
+
+        {/* Portfolio Tab - Blurred without connection */}
+        {activeTab === 'portfolio' && (
+          <SwapPanel title="Portfolio" subtitle="Your open positions">
+            <div className="relative">
+              <div className="blur-sm pointer-events-none">
+                <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08] mb-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-white/60">Total Value</span>
+                    <span className="text-lg font-medium text-white">$0.00</span>
+                  </div>
+                </div>
+                <div className="text-center py-8 text-white/40">
+                  <p className="text-sm">No open positions</p>
+                </div>
+              </div>
+              <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[2px] rounded-xl">
+                <div className="text-center">
+                  <p className="text-sm text-white/60 mb-3">Connect wallet to view portfolio</p>
+                  <Button variant="yellow" onClick={openConnectModal}>
+                    Connect Wallet
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </SwapPanel>
+        )}
+
+        {/* Risk Tab - Blurred without connection */}
+        {activeTab === 'risk' && (
+          <SwapPanel title="Risk Management" subtitle="Configure your trading limits">
+            <div className="relative">
+              <div className="blur-sm pointer-events-none">
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08]">
+                    <span className="text-xs text-white/40">Max Leverage</span>
+                    <p className="text-lg font-medium text-white">5x</p>
+                  </div>
+                  <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08]">
+                    <span className="text-xs text-white/40">Max Drawdown</span>
+                    <p className="text-lg font-medium text-white">10%</p>
+                  </div>
+                </div>
+              </div>
+              <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[2px] rounded-xl">
+                <div className="text-center">
+                  <p className="text-sm text-white/60 mb-3">Connect wallet to manage risk settings</p>
+                  <Button variant="yellow" onClick={openConnectModal}>
+                    Connect Wallet
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </SwapPanel>
+        )}
+
+        {/* History Tab - Blurred without connection */}
+        {activeTab === 'history' && (
+          <SwapPanel title="Trade History" subtitle="Your past trades">
+            <div className="relative">
+              <div className="blur-sm pointer-events-none">
+                <div className="text-center py-8 text-white/40">
+                  <p className="text-sm">No trade history</p>
+                </div>
+              </div>
+              <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[2px] rounded-xl">
+                <div className="text-center">
+                  <p className="text-sm text-white/60 mb-3">Connect wallet to view history</p>
+                  <Button variant="yellow" onClick={openConnectModal}>
+                    Connect Wallet
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </SwapPanel>
+        )}
       </div>
     );
   }
 
-  // Step 2: Authenticate with Pear Protocol
-  if (!isAuthenticated) {
+  // Step 2: Authenticate with Pear Protocol (only show if connected but not authenticated)
+  if (isConnected && !isAuthenticated) {
     return (
       <div className="space-y-6">
         <Card>
@@ -291,7 +521,7 @@ export default function RoboPage() {
   }
 
   // Step 3: Setup Agent Wallet (Create + Approve on Hyperliquid)
-  if (!agentWalletExists && !agentWalletLoading) {
+  if (isConnected && isAuthenticated && !agentWalletExists && !agentWalletLoading) {
     // Sub-step: Need to create agent wallet first
     if (!agentWalletAddress && !agentWalletNeedsApproval) {
       return (
@@ -392,7 +622,7 @@ export default function RoboPage() {
   }
 
   // Step 3.5: Approve Builder Fee on Hyperliquid
-  if (!builderFeeApproved && !builderFeeLoading) {
+  if (isConnected && isAuthenticated && agentWalletExists && !builderFeeApproved && !builderFeeLoading) {
     return (
       <div className="space-y-6">
         <Card>
@@ -457,7 +687,7 @@ export default function RoboPage() {
   }
 
   // Step 4: Create Salt Account
-  if (!account) {
+  if (isConnected && isAuthenticated && agentWalletExists && builderFeeApproved && !account) {
     return (
       <div className="space-y-6">
         <Card>
@@ -500,39 +730,62 @@ export default function RoboPage() {
   // Step 5: Main Dashboard
   return (
     <div className="space-y-6">
-      {/* Account Header */}
-      <Card>
-        <div className="p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-white/40 font-light">Robo Account</span>
-            <Badge variant="success">Active</Badge>
+      {/* Toast Notification - Fixed position on right side, stays until dismissed */}
+      {toast && (
+        <div className="fixed right-4 top-1/2 -translate-y-1/2 z-50 max-w-md animate-in slide-in-from-right fade-in duration-300">
+          <div className={`relative backdrop-blur-sm border rounded-xl p-4 shadow-2xl ${
+            toast.type === 'error'
+              ? 'bg-red-500/95 border-red-400/50 shadow-red-500/20'
+              : 'bg-green-500/95 border-green-400/50 shadow-green-500/20'
+          }`}>
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                {toast.type === 'error' ? (
+                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-white mb-1">
+                  {toast.type === 'error' ? 'Policy Violation' : 'Trade Executed'}
+                </p>
+                <p className="text-sm text-white/90 font-light leading-relaxed">{toast.message}</p>
+                {/* Show details list if available */}
+                {toast.details && toast.details.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {toast.details.map((detail, i) => (
+                      <li key={i} className="text-xs text-white/80 flex items-start gap-1.5">
+                        <span className="text-white/50 mt-0.5">•</span>
+                        <span>{detail}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {toast.id && (
+                  <p className="text-xs text-white/60 mt-2 font-mono">ID: {toast.id.slice(0, 8)}...</p>
+                )}
+              </div>
+              <button
+                onClick={() => setToast(null)}
+                className="flex-shrink-0 text-white/70 hover:text-white transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
-          <p className="text-sm text-tago-yellow-400 font-mono truncate">
-            {account.salt_account_address}
-          </p>
         </div>
-      </Card>
+      )}
 
-      {/* Tab Navigation */}
-      <div className="flex gap-1 p-1 bg-white/[0.03] rounded-xl border border-white/[0.08]">
-        {(['trade', 'portfolio', 'settings', 'history'] as TabType[]).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-2 px-3 text-sm font-light rounded-lg transition-all ${
-              activeTab === tab
-                ? 'bg-tago-yellow-400 text-black'
-                : 'text-white/60 hover:text-white hover:bg-white/[0.05]'
-            }`}
-          >
-            {tab === 'trade' ? 'AI Trade' : tab === 'portfolio' ? 'Portfolio' : tab === 'settings' ? 'Settings' : 'History'}
-          </button>
-        ))}
-      </div>
-
-      {/* Trade Tab - AI Trade Builder */}
+      {/* Trade Tab - Narrative Trading */}
       {activeTab === 'trade' && (
-        <SwapPanel title="AI Trade Builder" subtitle="Describe your thesis, get a pair trade">
+        <SwapPanel title="Narrative Trading" subtitle="Describe your thesis, get a pair trade">
           {/* Prompt Input */}
           <div className="space-y-2">
             <label className="block text-sm font-light text-white/70">Your Trading Idea</label>
@@ -560,12 +813,6 @@ export default function RoboPage() {
           >
             Get AI Suggestion
           </Button>
-
-          {error && (
-            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
-              <p className="text-sm text-red-400 font-light">{error}</p>
-            </div>
-          )}
 
           {/* AI Suggestion Display */}
           {suggestion && (
@@ -840,18 +1087,6 @@ export default function RoboPage() {
             </>
           )}
 
-          {/* Trade Result */}
-          {tradeResult && (
-            <Card variant="solid" className="bg-green-500/10 border-green-500/20">
-              <div className="p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Badge variant="success">Trade Executed</Badge>
-                </div>
-                <p className="text-sm text-white/60 font-light">Trade ID: {tradeResult.id}</p>
-                <p className="text-sm text-white/60 font-light">Status: {tradeResult.status}</p>
-              </div>
-            </Card>
-          )}
         </SwapPanel>
       )}
 
@@ -969,148 +1204,20 @@ export default function RoboPage() {
         </SwapPanel>
       )}
 
-      {/* Settings Tab */}
-      {activeTab === 'settings' && (
-        <div className="space-y-6">
-          {/* Risk Policy */}
-          <SwapPanel title="Risk Policy" subtitle="Configure your trading limits">
-            <Input
-              label="Max Leverage"
-              type="number"
-              value={maxLeverage}
-              onChange={(e) => setMaxLeverage(e.target.value)}
-              helperText="Maximum leverage for any position (1-20)"
-            />
-
-            <Input
-              label="Max Daily Notional (USD)"
-              type="number"
-              value={maxDailyNotional}
-              onChange={(e) => setMaxDailyNotional(e.target.value)}
-              helperText="Maximum total position size per day"
-            />
-
-            <Input
-              label="Max Drawdown (%)"
-              type="number"
-              value={maxDrawdown}
-              onChange={(e) => setMaxDrawdown(e.target.value)}
-              helperText="Stop trading if losses exceed this percentage"
-            />
-
-            <Button
-              variant="yellow"
-              fullWidth
-              onClick={handleSavePolicy}
-              loading={savingPolicy}
-            >
-              Save Policy
-            </Button>
-          </SwapPanel>
-
-          {/* Automated Strategies */}
-          <SwapPanel title="Automated Strategies" subtitle="Enable robo trading strategies">
-            {strategiesError && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
-                <p className="text-sm text-red-400 font-light">{strategiesError}</p>
-              </div>
-            )}
-
-            {strategiesLoading ? (
-              <div className="text-center py-4">
-                <p className="text-white/40 font-light">Loading strategies...</p>
-              </div>
-            ) : availableStrategies.length === 0 ? (
-              <div className="text-center py-4">
-                <p className="text-white/40 font-light">No strategies available</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {availableStrategies.map((strategy) => {
-                  const userStrategy = userStrategies.find(s => s.strategy_id === strategy.id);
-                  const isActive = userStrategy?.active || false;
-
-                  return (
-                    <div
-                      key={strategy.id}
-                      className="bg-white/[0.03] border border-white/[0.08] rounded-xl p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-sm text-white font-medium">{strategy.name}</span>
-                            <Badge
-                              variant={
-                                strategy.riskLevel === 'conservative' ? 'info' :
-                                strategy.riskLevel === 'standard' ? 'warning' : 'error'
-                              }
-                            >
-                              {strategy.riskLevel}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-white/50">{strategy.description}</p>
-                        </div>
-                        <button
-                          onClick={() => toggleStrategy(strategy.id, !isActive)}
-                          disabled={isToggling}
-                          className={`relative w-12 h-6 rounded-full transition-colors ${
-                            isActive ? 'bg-tago-yellow-400' : 'bg-white/10'
-                          }`}
-                        >
-                          <span
-                            className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                              isActive ? 'left-7' : 'left-1'
-                            }`}
-                          />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </SwapPanel>
-
-          {/* Recent Robo Actions */}
-          <SwapPanel title="Recent Robo Actions" subtitle="Automated trading activity">
-            {recentRuns.length === 0 ? (
-              <div className="text-center py-4">
-                <p className="text-white/40 font-light">No automated actions yet</p>
-                <p className="text-xs text-white/30 mt-1">Enable a strategy to start robo trading</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {recentRuns.map((run) => (
-                  <div
-                    key={run.id}
-                    className="flex items-center justify-between p-3 bg-white/[0.03] rounded-lg border border-white/[0.08]"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-white font-light truncate">
-                        {run.strategy_id}
-                      </p>
-                      <p className="text-xs text-white/40">
-                        {new Date(run.started_at).toLocaleString()}
-                      </p>
-                    </div>
-                    <Badge
-                      variant={
-                        run.status === 'completed' ? 'success' :
-                        run.status === 'running' ? 'info' : 'error'
-                      }
-                    >
-                      {run.status}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <Button variant="ghost" fullWidth onClick={refreshRuns}>
-              Refresh Actions
-            </Button>
-          </SwapPanel>
-        </div>
+      {/* Risk Management Tab */}
+      {activeTab === 'risk' && (
+        <RiskManagementTab
+          maxLeverage={maxLeverage}
+          setMaxLeverage={setMaxLeverage}
+          maxDailyNotional={maxDailyNotional}
+          setMaxDailyNotional={setMaxDailyNotional}
+          maxDrawdown={maxDrawdown}
+          setMaxDrawdown={setMaxDrawdown}
+          savingPolicy={savingPolicy}
+          onSavePolicy={handleSavePolicy}
+          showToast={showToast}
+          allowedTokens={allowedTokens}
+        />
       )}
 
       {/* History Tab */}
@@ -1156,6 +1263,94 @@ export default function RoboPage() {
           </Button>
         </SwapPanel>
       )}
+
+      {/* Advanced Details - Collapsible section at bottom */}
+      <div className="mt-2">
+        <button
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="w-full flex items-center justify-center gap-2 py-2 text-xs text-white/30 hover:text-white/50 transition-colors"
+        >
+          <svg
+            className={`w-3 h-3 transition-transform ${showAdvanced ? 'rotate-180' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+          Advanced
+        </button>
+
+        {showAdvanced && (
+          <div className="mt-2 p-4 bg-white/[0.02] rounded-xl border border-white/[0.05] space-y-3">
+            <div className="grid grid-cols-1 gap-3">
+              {/* Wallet Address */}
+              <div>
+                <span className="text-xs text-white/30 block mb-1">Wallet</span>
+                <p className="text-xs text-white/60 font-mono truncate">{address || 'Not connected'}</p>
+              </div>
+
+              {/* Robo Account */}
+              {account && (
+                <div>
+                  <span className="text-xs text-white/30 block mb-1">Robo Account</span>
+                  <p className="text-xs text-white/60 font-mono truncate">{account.salt_account_address}</p>
+                </div>
+              )}
+
+              {/* Agent Wallet */}
+              {agentWalletAddress && (
+                <div>
+                  <span className="text-xs text-white/30 block mb-1">Agent Wallet</span>
+                  <p className="text-xs text-white/60 font-mono truncate">{agentWalletAddress}</p>
+                </div>
+              )}
+
+              {/* Status Badges */}
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-white/[0.05]">
+                <div className="flex items-center gap-1.5">
+                  <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-400' : 'bg-white/20'}`} />
+                  <span className="text-xs text-white/40">Connected</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className={`w-1.5 h-1.5 rounded-full ${isAuthenticated ? 'bg-green-400' : 'bg-white/20'}`} />
+                  <span className="text-xs text-white/40">Authenticated</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className={`w-1.5 h-1.5 rounded-full ${agentWalletExists ? 'bg-green-400' : 'bg-white/20'}`} />
+                  <span className="text-xs text-white/40">Agent Wallet</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className={`w-1.5 h-1.5 rounded-full ${builderFeeApproved ? 'bg-green-400' : 'bg-white/20'}`} />
+                  <span className="text-xs text-white/40">Builder Fee</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className={`w-1.5 h-1.5 rounded-full ${account ? 'bg-green-400' : 'bg-white/20'}`} />
+                  <span className="text-xs text-white/40">Robo Account</span>
+                </div>
+              </div>
+
+              {/* Hyperliquid Balance */}
+              {hlBalance && (
+                <div className="pt-2 border-t border-white/[0.05]">
+                  <span className="text-xs text-white/30 block mb-1">Hyperliquid Balance</span>
+                  <p className="text-xs text-white/60">
+                    Available: <span className="text-white/80">${hlBalance.availableBalance.toFixed(2)}</span>
+                    <span className="ml-2">
+                      Equity: <span className="text-white/80">${hlBalance.equity.toFixed(2)}</span>
+                    </span>
+                    {hlBalance.unrealizedPnl !== 0 && (
+                      <span className={`ml-2 ${hlBalance.unrealizedPnl >= 0 ? 'text-green-400/80' : 'text-red-400/80'}`}>
+                        PnL: {hlBalance.unrealizedPnl >= 0 ? '+' : ''}${hlBalance.unrealizedPnl.toFixed(2)}
+                      </span>
+                    )}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

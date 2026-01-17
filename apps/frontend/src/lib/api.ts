@@ -381,4 +381,26 @@ export const saltApi = {
       method: 'POST',
       body: JSON.stringify({ strategyId, active }),
     }),
+
+  /**
+   * Execute a direct pair trade with Salt policy validation.
+   * Routes through Salt service which:
+   * 1. Validates user is authenticated with Pear
+   * 2. Checks trade against account policy (leverage, notional, allowed pairs)
+   * 3. Executes via Pear service with source='salt'
+   */
+  executePairTrade: (
+    accountId: string,
+    data: {
+      longAssets: Array<{ asset: string; weight: number }>;
+      shortAssets: Array<{ asset: string; weight: number }>;
+      stakeUsd: number;
+      leverage: number;
+      slippage?: number;
+    }
+  ) =>
+    fetchApi<any>(`${config.saltServiceUrl}/salt/accounts/${accountId}/pair-trade`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };

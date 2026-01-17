@@ -24,7 +24,7 @@ import {
 import { getOrCreateSaltWallet } from '../domain/saltWalletService.js';
 import { validatePolicy } from '../domain/policyTypes.js';
 import { getAllStrategies, getStrategyById } from '../domain/strategyTypes.js';
-import { executeStrategyTrade, ExecuteTradeParams, TradeExecutionResult } from '../domain/strategyExecutor.js';
+import { executeStrategyTrade, ExecuteTradeParams, TradeExecutionResult, executeDirectPairTrade, ExecuteDirectPairTradeParams } from '../domain/strategyExecutor.js';
 import { getTradesBySaltAccount } from '../clients/pearServiceClient.js';
 
 interface AccountWithDetails {
@@ -306,6 +306,84 @@ export async function accountsRoutes(app: FastifyInstance) {
       };
     } catch (err) {
       console.error('[POST /accounts/:id/trade] Error:', err);
+      return reply.internalServerError(
+        err instanceof Error ? err.message : 'Failed to execute trade'
+      );
+    }
+  });
+
+  /**
+   * POST /salt/accounts/:id/pair-trade - Execute a direct pair trade for a Salt account
+   *
+   * This endpoint is for AI-generated trades that specify assets directly (not via narrative ID).
+   * It:
+   * 1. Validates the user is authenticated with Pear Protocol
+   * 2. Checks against the account's policy (leverage, daily notional, allowed pairs)
+   * 3. Executes the trade via pear-service with source='salt'
+   */
+  app.post<{
+    Params: { id: string };
+    Body: ExecuteDirectPairTradeParams;
+    Reply: ApiResponse<TradeExecutionResult>;
+  }>('/accounts/:id/pair-trade', async (request, reply) => {
+    const { id } = request.params;
+    const params = request.body;
+
+    // Validate required fields
+    if (!params.longAssets || !params.shortAssets || !params.stakeUsd || !params.leverage) {
+      return reply.badRequest('Missing required fields: longAssets, shortAssets, stakeUsd, leverage');
+    }
+
+    // Validate longAssets
+    if (!Array.isArray(params.longAssets) || params.longAssets.length === 0) {
+      return reply.badRequest('longAssets must be a non-empty array');
+    }
+
+    // Validate shortAssets
+    if (!Array.isArray(params.shortAssets) || params.shortAssets.length === 0) {
+      return reply.badRequest('shortAssets must be a non-empty array');
+    }
+
+    // Validate stakeUsd
+    if (params.stakeUsd < 1) {
+      return reply.badRequest('Minimum stake is $1 USD');
+    }
+
+    // Validate leverage
+    if (params.leverage < 1 || params.leverage > 20) {
+      return reply.badRequest('Leverage must be between 1 and 20');
+    }
+
+    // Hyperliquid requires minimum $10 notional
+    const notional = params.stakeUsd * params.leverage;
+    if (notional < 10) {
+      return reply.badRequest(`Minimum notional is $10. Your trade is $${notional.toFixed(2)} (${params.stakeUsd} × ${params.leverage}x)`);
+    }
+
+    try {
+      const result = await executeDirectPairTrade(app.supabase, id, params);
+
+      if (!result.success) {
+        // Return 400 for policy violations, 401 for auth issues
+        if (result.error?.includes('not authenticated')) {
+          return reply.unauthorized(result.error);
+        }
+        if (result.error?.includes('Policy violation')) {
+          return reply.code(400).send({
+            success: false,
+            error: { code: 'POLICY_VIOLATION', message: result.error },
+            data: result,
+          });
+        }
+        return reply.badRequest(result.error || 'Trade execution failed');
+      }
+
+      return {
+        success: true,
+        data: result,
+      };
+    } catch (err) {
+      console.error('[POST /accounts/:id/pair-trade] Error:', err);
       return reply.internalServerError(
         err instanceof Error ? err.message : 'Failed to execute trade'
       );

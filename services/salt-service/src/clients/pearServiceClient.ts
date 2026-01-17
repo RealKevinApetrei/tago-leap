@@ -222,3 +222,64 @@ export async function checkUserAuth(
     throw err;
   }
 }
+
+/**
+ * Parameters for direct pair trade execution
+ */
+export interface ExecutePairTradeParams {
+  userWalletAddress: string;
+  longAssets: Array<{ asset: string; weight: number }>;
+  shortAssets: Array<{ asset: string; weight: number }>;
+  stakeUsd: number;
+  leverage: number;
+  slippage?: number;
+  accountRef?: string;
+  source?: 'user' | 'salt';
+}
+
+/**
+ * Execute a direct pair trade (with pre-specified assets) via pear-service.
+ * This is for AI-generated trades that don't use narrative IDs.
+ */
+export async function executePairTrade(
+  params: ExecutePairTradeParams
+): Promise<Trade> {
+  const url = `${saltConfig.pearServiceUrl}/bets/execute`;
+
+  console.log(`[PearServiceClient] Executing pair trade:`, {
+    url,
+    userWalletAddress: params.userWalletAddress,
+    longAssets: params.longAssets.map(a => a.asset),
+    shortAssets: params.shortAssets.map(a => a.asset),
+    stakeUsd: params.stakeUsd,
+    leverage: params.leverage,
+    accountRef: params.accountRef,
+    source: params.source,
+  });
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`Pear service error: ${response.status} ${response.statusText} - ${errorBody}`);
+    }
+
+    const result = (await response.json()) as ApiResponse<Trade>;
+
+    if (!result.success || !result.data) {
+      throw new Error(result.error?.message || 'Unknown error from Pear service');
+    }
+
+    return result.data;
+  } catch (err) {
+    console.error(`[PearServiceClient] Error executing pair trade:`, err);
+    throw err;
+  }
+}

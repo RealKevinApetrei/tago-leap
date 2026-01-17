@@ -1,59 +1,87 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 
 const navItems = [
-  { label: 'Onboard', href: '/onboard' },
-  { label: 'Trade', href: '/robo' },
+  { label: 'Onboard', href: '/onboard', tab: null },
+  { label: 'Narrative', href: '/robo?tab=trade', tab: 'trade' },
+  { label: 'Portfolio', href: '/robo?tab=portfolio', tab: 'portfolio' },
+  { label: 'Risk', href: '/robo?tab=risk', tab: 'risk' },
+  { label: 'History', href: '/robo?tab=history', tab: 'history' },
 ];
 
 export function Navigation() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get('tab');
+
+  const isActive = (item: typeof navItems[0]) => {
+    if (item.href === '/onboard') {
+      return pathname === '/onboard';
+    }
+    // For robo tabs, check both pathname and tab query param
+    if (pathname === '/robo') {
+      // Default to 'trade' tab if no tab specified
+      const activeTab = currentTab || 'trade';
+      return item.tab === activeTab;
+    }
+    return false;
+  };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass-strong">
       <div className="max-w-4xl mx-auto px-4 py-3">
         <div className="flex items-center justify-between">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-3 group">
-            <div className="relative w-9 h-9 rounded-lg overflow-hidden shadow-lg shadow-tago-yellow-500/20 group-hover:shadow-tago-yellow-500/30 transition-shadow">
-              <Image
-                src="/logo.png"
-                alt="TAGO Leap"
-                fill
-                className="object-cover"
-                priority
-              />
+          <Link href="/" className="flex items-center gap-2.5 group">
+            {/* Animated Logo Mark */}
+            <div className="relative w-8 h-8">
+              {/* Outer glow ring */}
+              <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-tago-yellow-400/20 to-tago-yellow-500/10 group-hover:from-tago-yellow-400/30 group-hover:to-tago-yellow-500/20 transition-all duration-500" />
+              {/* Inner container */}
+              <div className="absolute inset-[2px] rounded-md bg-tago-black flex items-center justify-center overflow-hidden">
+                {/* Animated gradient background */}
+                <div className="absolute inset-0 bg-gradient-to-br from-tago-yellow-400/10 via-transparent to-tago-yellow-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                {/* Lightning icon */}
+                <svg
+                  className="w-4 h-4 text-tago-yellow-400 relative z-10 group-hover:scale-110 transition-transform duration-300"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                </svg>
+              </div>
+              {/* Pulse effect on hover */}
+              <div className="absolute inset-0 rounded-lg border border-tago-yellow-400/0 group-hover:border-tago-yellow-400/30 group-hover:animate-pulse transition-all duration-300" />
             </div>
-            <div className="flex flex-col">
-              <span className="text-base font-light text-white tracking-wide">
-                <span className="italic text-tago-yellow-400">TAGO</span> Leap
-              </span>
+            {/* Text */}
+            <div className="flex items-baseline gap-1">
+              <span className="text-base font-light italic text-tago-yellow-400 tracking-tight">TAGO</span>
+              <span className="text-base font-light text-white/90 tracking-tight">Leap</span>
             </div>
           </Link>
 
           {/* Center Navigation Links */}
-          <div className="flex items-center gap-1 bg-white/5 rounded-xl p-1">
+          <div className="flex items-center gap-0.5 bg-white/5 rounded-xl p-1">
             {navItems.map((item) => {
-              const isActive = pathname === item.href;
+              const active = isActive(item);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={`
-                    relative px-4 py-2 rounded-lg text-sm tracking-wide transition-all duration-300
+                    relative px-3 py-2 rounded-lg text-sm tracking-wide transition-all duration-300
                     ${
-                      isActive
+                      active
                         ? 'bg-gradient-to-r from-tago-yellow-400 to-tago-yellow-500 text-black font-medium shadow-lg shadow-tago-yellow-500/20'
                         : 'text-white/60 hover:text-white hover:bg-white/5 font-light'
                     }
                   `}
                 >
                   {item.label}
-                  {isActive && (
+                  {active && (
                     <span className="absolute inset-0 rounded-lg bg-tago-yellow-400/20 blur-xl -z-10" />
                   )}
                 </Link>

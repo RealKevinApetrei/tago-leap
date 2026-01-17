@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import { headers } from 'next/headers';
 import './globals.css';
 import { Navigation } from '@/components/Navigation';
 import { Providers } from '@/components/Providers';
@@ -16,15 +17,19 @@ export const metadata: Metadata = {
   description: 'Trade narratives, onboard to Hyperliquid, and run robo-managers',
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Get cookie header for wagmi SSR hydration
+  const headersList = await headers();
+  const cookie = headersList.get('cookie') ?? '';
+
   return (
     <html lang="en" className="dark">
       <body className={`${inter.className} bg-tago-black min-h-screen antialiased`}>
-        <Providers>
+        <Providers cookie={cookie}>
           <Navigation />
           <main className="pt-20 pb-8 px-4">
             <div className="max-w-lg mx-auto">{children}</div>

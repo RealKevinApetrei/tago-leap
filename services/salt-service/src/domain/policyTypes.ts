@@ -15,17 +15,22 @@ export interface SaltPolicy {
  * All other parts of the codebase should import this constant
  * rather than defining their own defaults.
  *
- * Conservative settings:
- * - 2x leverage (low risk)
- * - $10k daily limit (moderate position sizing)
- * - Major pairs only (BTC, ETH, SOL)
- * - 10% max drawdown (capital preservation)
+ * Moderate settings for hackathon demo:
+ * - 5x leverage (moderate risk)
+ * - $50k daily limit (reasonable for demo)
+ * - Popular pairs on Hyperliquid
+ * - 15% max drawdown
  */
 export const defaultPolicy: SaltPolicy = {
-  maxLeverage: 2,
-  maxDailyNotionalUsd: 10000,
-  allowedPairs: ['BTC-USD', 'ETH-USD', 'SOL-USD'],
-  maxDrawdownPct: 10,
+  maxLeverage: 5,
+  maxDailyNotionalUsd: 50000,
+  allowedPairs: [
+    'BTC', 'ETH', 'SOL', 'DOGE', 'AVAX', 'LINK', 'ARB', 'OP',
+    'WIF', 'PEPE', 'SUI', 'APT', 'INJ', 'TIA', 'SEI', 'JUP',
+    'RENDER', 'TAO', 'FET', 'DOT', 'ATOM', 'NEAR', 'FTM', 'MATIC',
+    'LTC', 'BCH', 'XRP', 'ADA', 'HBAR', 'UNI', 'AAVE', 'MKR',
+  ],
+  maxDrawdownPct: 15,
 };
 
 /**

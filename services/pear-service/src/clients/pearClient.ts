@@ -21,11 +21,33 @@ async function pearFetch<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${PEAR_API_BASE}${endpoint}`;
+  const method = options.method || 'GET';
+
+  console.log('[pearFetch] ══════════════════════════════════════════');
   console.log('[pearFetch] Request:', {
     url,
-    method: options.method || 'GET',
+    method,
     hasBody: !!options.body,
   });
+
+  // Log request body for debugging (but not sensitive data)
+  if (options.body) {
+    try {
+      const bodyObj = JSON.parse(options.body as string);
+      console.log('[pearFetch] Request payload:', JSON.stringify(bodyObj, null, 2));
+    } catch {
+      console.log('[pearFetch] Request body (raw):', options.body);
+    }
+  }
+
+  // Log token info (first/last chars only for security)
+  if (accessToken) {
+    console.log('[pearFetch] Token info:', {
+      length: accessToken.length,
+      prefix: accessToken.substring(0, 10) + '...',
+      suffix: '...' + accessToken.substring(accessToken.length - 10),
+    });
+  }
 
   const response = await fetch(url, {
     ...options,
@@ -36,15 +58,41 @@ async function pearFetch<T>(
     },
   });
 
-  console.log('[pearFetch] Response status:', response.status);
+  console.log('[pearFetch] Response:', {
+    status: response.status,
+    statusText: response.statusText,
+    headers: {
+      'content-type': response.headers.get('content-type'),
+      'x-request-id': response.headers.get('x-request-id'),
+    },
+  });
 
   if (!response.ok) {
-    const error = await response.text();
-    console.error('[pearFetch] Error response:', error);
-    throw new Error(`Pear API error: ${response.status} - ${error}`);
+    const errorText = await response.text();
+    console.error('[pearFetch] ❌ Error response body:', errorText);
+
+    // Try to parse as JSON for structured error info
+    let errorDetails: any = null;
+    try {
+      errorDetails = JSON.parse(errorText);
+      console.error('[pearFetch] ❌ Parsed error:', JSON.stringify(errorDetails, null, 2));
+    } catch {
+      // Not JSON, use raw text
+    }
+
+    // Create a more detailed error message
+    const errorMessage = errorDetails?.message || errorDetails?.error || errorText || 'Unknown error';
+    const errorCode = errorDetails?.code || errorDetails?.statusCode || response.status;
+
+    console.error('[pearFetch] ══════════════════════════════════════════');
+    throw new Error(`Pear API error: ${response.status} (${errorCode}) - ${errorMessage}`);
   }
 
-  return response.json() as Promise<T>;
+  const responseData = await response.json() as T;
+  console.log('[pearFetch] ✓ Success response received');
+  console.log('[pearFetch] ══════════════════════════════════════════');
+
+  return responseData;
 }
 
 /**

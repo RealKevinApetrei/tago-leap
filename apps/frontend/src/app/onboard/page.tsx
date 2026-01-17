@@ -86,6 +86,11 @@ export default function OnboardPage() {
   const [fromToken, setFromToken] = useState('');
   const [amount, setAmount] = useState('');
 
+  // Salt wallet state
+  const [saltWallet, setSaltWallet] = useState<{ saltWalletAddress: string; exists: boolean } | null>(null);
+  const [saltLoading, setSaltLoading] = useState(false);
+  const [flowStatus, setFlowStatus] = useState<'idle' | 'depositing' | 'complete'>('idle');
+
   // Use connected wallet address
   const walletAddress = address || '';
 
@@ -211,10 +216,13 @@ export default function OnboardPage() {
     }
   };
 
+  // Alias for handleSwap for clarity in UI context
+  const handleDeposit = handleSwap;
+
   const handleRetry = () => {
     setError(null);
     if (quote) {
-      handleDeposit();
+      handleSwap();
     } else {
       handleGetQuote();
     }
