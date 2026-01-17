@@ -4,15 +4,17 @@ import { TradeError, TradeErrorCode, ERROR_MESSAGES } from '@tago-leap/shared/ty
 import { Button } from '@/components/ui/Button';
 
 interface TradeErrorDisplayProps {
-  error: TradeError;
+  error: Partial<TradeError> & { message: string };
   onRetry?: () => void;
   onAction?: () => void;
   onDismiss?: () => void;
   className?: string;
 }
 
-function getErrorCategory(code: TradeErrorCode): 'setup' | 'balance' | 'policy' | 'execution' | 'network' {
+function getErrorCategory(code: TradeErrorCode | undefined): 'setup' | 'balance' | 'policy' | 'execution' | 'network' {
+  if (!code || typeof code !== 'string') return 'execution';
   const codeNum = parseInt(code.replace('E', ''));
+  if (isNaN(codeNum)) return 'execution';
   if (codeNum >= 100 && codeNum < 200) return 'setup';
   if (codeNum >= 200 && codeNum < 300) return 'balance';
   if (codeNum >= 300 && codeNum < 400) return 'policy';
@@ -89,7 +91,7 @@ export function TradeErrorDisplay({
         {getErrorIcon(category)}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-mono text-white/40">[{error.code}]</span>
+            {error.code && <span className="text-xs font-mono text-white/40">[{error.code}]</span>}
             <span className="text-sm font-medium text-white">{getCategoryLabel(category)}</span>
           </div>
           <p className="text-sm text-white/70">{error.message}</p>

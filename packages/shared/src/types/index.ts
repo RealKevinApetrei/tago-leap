@@ -86,6 +86,8 @@ export interface OnboardingQuoteRequest {
   preference?: RoutePreference;
   /** If true, deposit to user's salt wallet */
   depositToSaltWallet?: boolean;
+  /** Destination chain ID (defaults to HyperEVM if not specified) */
+  toChainId?: number;
 }
 
 /** Response containing multiple route alternatives */
@@ -98,6 +100,8 @@ export interface RouteAlternatives {
   preference: RoutePreference;
   /** Number of routes found */
   routeCount: number;
+  /** Raw LI.FI routes for SDK execution */
+  rawRoutes?: any[];
 }
 
 /** Token info with human-readable details */

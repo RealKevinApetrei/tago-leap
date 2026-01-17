@@ -28,6 +28,8 @@ interface ExtendedQuoteRequest extends OnboardingQuoteRequest {
   depositToSaltWallet?: boolean;
   /** Route optimization preference */
   preference?: RoutePreference;
+  /** Destination chain ID (defaults to HyperEVM if not specified) */
+  toChainId?: number;
 }
 
 /**
@@ -130,6 +132,7 @@ export async function onboardingRoutes(app: FastifyInstance) {
       toTokenAddress,
       depositToSaltWallet,
       preference = 'recommended',
+      toChainId,
     } = request.body;
 
     // Validate required fields
@@ -163,11 +166,13 @@ export async function onboardingRoutes(app: FastifyInstance) {
     }
 
     // Get routes from LI.FI with preference
+    // Use provided toChainId or default to HyperEVM for backward compatibility
+    const destinationChainId = toChainId || hyperliquidConfig.hyperEvmChainId;
     let routeAlternatives: RouteAlternatives;
     try {
       routeAlternatives = await getRoutes({
         fromChainId,
-        toChainId: hyperliquidConfig.hyperEvmChainId,
+        toChainId: destinationChainId,
         fromTokenAddress,
         toTokenAddress,
         fromAmount: amount,
@@ -206,6 +211,8 @@ export async function onboardingRoutes(app: FastifyInstance) {
         preference: routeAlternatives.preference,
         routeCount: routeAlternatives.routeCount,
         saltWalletAddress,
+        // Raw route data for frontend SDK execution
+        rawRoute: (routeAlternatives as any).rawRoutes?.[0],
       },
     };
   });

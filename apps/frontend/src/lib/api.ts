@@ -279,6 +279,7 @@ export const lifiApi = {
     fromTokenAddress: string;
     amount: string;
     toTokenAddress: string;
+    toChainId?: number;
     depositToSaltWallet?: boolean;
   }) =>
     fetchApi<any>(`${config.lifiServiceUrl}/onboard/quote`, {

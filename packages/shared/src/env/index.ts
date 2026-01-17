@@ -20,6 +20,7 @@ export const lifiEnvSchema = baseEnvSchema.extend({
   LIFI_SERVICE_PORT: z.coerce.number().default(3002),
   LIFI_API_BASE_URL: z.string().url().default('https://li.quest/v1'),
   LIFI_INTEGRATOR: z.string().default('tago-leap'),
+  LIFI_API_KEY: z.string().optional(),
   HYPERLIQUID_API_BASE_URL: z.string().url().default('https://api.hyperliquid.xyz'),
   HYPEREVM_CHAIN_ID: z.coerce.number().default(999),
   SALT_SERVICE_URL: z.string().url().default('http://localhost:3003'),

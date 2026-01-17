@@ -11,6 +11,19 @@ import type {
 
 const LIFI_API = lifiConfig.apiBaseUrl;
 const INTEGRATOR = lifiConfig.integrator;
+const API_KEY = lifiConfig.apiKey;
+
+// Common headers for all LI.FI API requests
+function getLifiHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+  };
+  if (API_KEY) {
+    headers['x-lifi-api-key'] = API_KEY;
+  }
+  return headers;
+}
 
 // Cache for chains and tokens (refresh every 5 minutes)
 let chainsCache: LifiChain[] | null = null;
@@ -188,7 +201,9 @@ async function fetchChains(): Promise<LifiChain[]> {
 
   console.log(`[LifiClient] Fetching chains from ${LIFI_API}/chains`);
 
-  const response = await fetch(`${LIFI_API}/chains`);
+  const response = await fetch(`${LIFI_API}/chains`, {
+    headers: getLifiHeaders(),
+  });
 
   if (!response.ok) {
     throw new Error(`Failed to fetch chains: ${response.status} ${response.statusText}`);
@@ -214,7 +229,9 @@ async function fetchTokens(chainIds: number[]): Promise<Map<number, LifiToken[]>
   const chainsParam = chainIds.join(',');
   console.log(`[LifiClient] Fetching tokens from ${LIFI_API}/tokens?chains=${chainsParam}`);
 
-  const response = await fetch(`${LIFI_API}/tokens?chains=${chainsParam}`);
+  const response = await fetch(`${LIFI_API}/tokens?chains=${chainsParam}`, {
+    headers: getLifiHeaders(),
+  });
 
   if (!response.ok) {
     throw new Error(`Failed to fetch tokens: ${response.status} ${response.statusText}`);
@@ -406,10 +423,7 @@ export async function getRoutes(params: GetRoutesParams): Promise<RouteAlternati
 
   const response = await fetch(`${LIFI_API}/advanced/routes`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
+    headers: getLifiHeaders(),
     body: JSON.stringify(requestBody),
   });
 
@@ -448,6 +462,8 @@ export async function getRoutes(params: GetRoutesParams): Promise<RouteAlternati
     alternatives: sortedRoutes,
     preference,
     routeCount: sortedRoutes.length,
+    // Include raw routes for frontend SDK execution
+    rawRoutes: data.routes,
   };
 }
 
