@@ -4,6 +4,9 @@ import { useState, useCallback, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { pearApi } from '@/lib/api';
 
+// Auto-refresh interval in milliseconds (15 seconds)
+const AUTO_REFRESH_INTERVAL = 15_000;
+
 // Position types matching PearPosition from shared types
 export interface PositionAsset {
   asset: string;
@@ -48,14 +51,16 @@ export function usePositions(): UsePositionsReturn {
   const [error, setError] = useState<string | null>(null);
 
   // Fetch positions
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (silent = false) => {
     if (!address) {
       setPositions([]);
       setIsLoading(false);
       return;
     }
 
-    setIsLoading(true);
+    if (!silent) {
+      setIsLoading(true);
+    }
     setError(null);
 
     try {
@@ -102,6 +107,22 @@ export function usePositions(): UsePositionsReturn {
       setPositions([]);
       setIsLoading(false);
     }
+  }, [isConnected, address, refresh]);
+
+  // Auto-refresh polling - picks up position changes made on Hyperliquid directly
+  useEffect(() => {
+    if (!isConnected || !address) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      // Silent refresh - don't show loading state for auto-refresh
+      refresh(true);
+    }, AUTO_REFRESH_INTERVAL);
+
+    return () => {
+      clearInterval(intervalId);
+    };
   }, [isConnected, address, refresh]);
 
   // Compute totals

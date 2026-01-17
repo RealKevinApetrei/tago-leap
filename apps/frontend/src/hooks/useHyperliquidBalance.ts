@@ -4,6 +4,9 @@ import { useState, useCallback, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import type { HyperliquidBalance } from '@tago-leap/shared/types';
 
+// Auto-refresh interval in milliseconds (15 seconds)
+const AUTO_REFRESH_INTERVAL = 15_000;
+
 interface UseHyperliquidBalanceReturn {
   balance: HyperliquidBalance | null;
   isLoading: boolean;
@@ -24,14 +27,16 @@ export function useHyperliquidBalance(): UseHyperliquidBalanceReturn {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchBalance = useCallback(async () => {
+  const fetchBalance = useCallback(async (silent = false) => {
     if (!address) {
       setBalance(null);
       setIsLoading(false);
       return;
     }
 
-    setIsLoading(true);
+    if (!silent) {
+      setIsLoading(true);
+    }
     setError(null);
 
     try {
@@ -116,6 +121,22 @@ export function useHyperliquidBalance(): UseHyperliquidBalanceReturn {
       setBalance(null);
       setIsLoading(false);
     }
+  }, [isConnected, address, fetchBalance]);
+
+  // Auto-refresh polling - picks up deposits/withdrawals made on Hyperliquid directly
+  useEffect(() => {
+    if (!isConnected || !address) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      // Silent refresh - don't show loading state for auto-refresh
+      fetchBalance(true);
+    }, AUTO_REFRESH_INTERVAL);
+
+    return () => {
+      clearInterval(intervalId);
+    };
   }, [isConnected, address, fetchBalance]);
 
   return {

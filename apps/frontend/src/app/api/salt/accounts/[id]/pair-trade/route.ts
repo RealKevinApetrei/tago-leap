@@ -8,6 +8,151 @@ import { createTrade, updateTrade } from '@/lib/api-server/domain/tradeRepo';
 import { getSupabaseAdmin } from '@/lib/api-server/supabase';
 import type { Json, SaltPolicy, ValidateTradeResponse } from '@tago-leap/shared/types';
 
+// Hyperliquid minimum notional per position (USD)
+const MIN_NOTIONAL_PER_POSITION = 10;
+
+interface HyperliquidAssetInfo {
+  name: string;
+  szDecimals: number;
+  maxLeverage: number;
+  price: number;
+  minSize: number; // Calculated minimum size in asset units
+}
+
+interface AssetContext {
+  funding: string;
+  openInterest: string;
+  prevDayPx: string;
+  dayNtlVlm: string;
+  premium: string;
+  oraclePx: string;
+  markPx: string;
+  midPx: string;
+  impactPxs: string[];
+}
+
+// Cache for asset info (refresh every 5 minutes)
+let assetInfoCache: Map<string, HyperliquidAssetInfo> | null = null;
+let assetInfoCacheTime = 0;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+async function getHyperliquidAssetInfo(): Promise<Map<string, HyperliquidAssetInfo>> {
+  const now = Date.now();
+  if (assetInfoCache && now - assetInfoCacheTime < CACHE_DURATION) {
+    return assetInfoCache;
+  }
+
+  try {
+    const response = await fetch('https://api.hyperliquid.xyz/info', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'metaAndAssetCtxs' }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Hyperliquid API error: ${response.status}`);
+    }
+
+    const [meta, assetCtxs] = await response.json() as [{ universe: Array<{ name: string; szDecimals: number; maxLeverage: number }> }, AssetContext[]];
+
+    const assetMap = new Map<string, HyperliquidAssetInfo>();
+
+    for (let i = 0; i < meta.universe.length; i++) {
+      const asset = meta.universe[i];
+      const ctx = assetCtxs[i];
+      const price = parseFloat(ctx?.markPx || ctx?.oraclePx || '0');
+
+      // Calculate minimum size based on $10 minimum notional
+      const minSize = price > 0 ? MIN_NOTIONAL_PER_POSITION / price : 0;
+
+      assetMap.set(asset.name, {
+        name: asset.name,
+        szDecimals: asset.szDecimals,
+        maxLeverage: asset.maxLeverage,
+        price,
+        minSize,
+      });
+    }
+
+    assetInfoCache = assetMap;
+    assetInfoCacheTime = now;
+    return assetMap;
+  } catch (err) {
+    console.error('Failed to fetch Hyperliquid asset info:', err);
+    // Return empty map if fetch fails - validation will be skipped
+    return new Map();
+  }
+}
+
+interface MinSizeValidation {
+  valid: boolean;
+  errors: string[];
+  assetDetails: Array<{
+    asset: string;
+    allocatedUsd: number;
+    minRequiredUsd: number;
+    price: number;
+  }>;
+}
+
+function validateMinimumSizes(
+  longAssets: Array<{ asset: string; weight: number }>,
+  shortAssets: Array<{ asset: string; weight: number }>,
+  stakeUsd: number,
+  leverage: number,
+  assetInfo: Map<string, HyperliquidAssetInfo>
+): MinSizeValidation {
+  const errors: string[] = [];
+  const assetDetails: MinSizeValidation['assetDetails'] = [];
+  const notional = stakeUsd * leverage;
+
+  // Check each long asset
+  for (const asset of longAssets) {
+    const info = assetInfo.get(asset.asset);
+    if (!info) continue; // Skip unknown assets
+
+    const allocatedUsd = notional * asset.weight;
+    const minRequiredUsd = MIN_NOTIONAL_PER_POSITION;
+
+    assetDetails.push({
+      asset: asset.asset,
+      allocatedUsd,
+      minRequiredUsd,
+      price: info.price,
+    });
+
+    if (allocatedUsd < minRequiredUsd) {
+      errors.push(`${asset.asset} position too small: $${allocatedUsd.toFixed(2)} (min $${minRequiredUsd})`);
+    }
+  }
+
+  // Check each short asset
+  for (const asset of shortAssets) {
+    const info = assetInfo.get(asset.asset);
+    if (!info) continue;
+
+    const allocatedUsd = notional * asset.weight;
+    const minRequiredUsd = MIN_NOTIONAL_PER_POSITION;
+
+    assetDetails.push({
+      asset: asset.asset,
+      allocatedUsd,
+      minRequiredUsd,
+      price: info.price,
+    });
+
+    if (allocatedUsd < minRequiredUsd) {
+      errors.push(`${asset.asset} position too small: $${allocatedUsd.toFixed(2)} (min $${minRequiredUsd})`);
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    assetDetails,
+  };
+}
+
 // Policy validation
 interface PolicyValidationResult {
   allowed: boolean;
@@ -190,6 +335,36 @@ export async function POST(
             success: false,
             error: { code: 'POLICY_VIOLATION', message: `Policy violation: ${validation.violations.join(', ')}` },
             data: { success: false, error: `Policy violation: ${validation.violations.join(', ')}` },
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validate minimum position sizes against Hyperliquid requirements
+    const assetInfo = await getHyperliquidAssetInfo();
+    if (assetInfo.size > 0) {
+      const sizeValidation = validateMinimumSizes(
+        longAssets || [],
+        shortAssets || [],
+        stakeUsd,
+        leverage,
+        assetInfo
+      );
+
+      if (!sizeValidation.valid) {
+        const minRequired = sizeValidation.assetDetails
+          .filter(d => d.allocatedUsd < d.minRequiredUsd)
+          .map(d => `${d.asset}: need $${d.minRequiredUsd}, got $${d.allocatedUsd.toFixed(2)}`)
+          .join('; ');
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'MIN_SIZE_ERROR',
+              message: `Position size too small. Each asset needs at least $${MIN_NOTIONAL_PER_POSITION}. ${minRequired}`,
+            },
           },
           { status: 400 }
         );

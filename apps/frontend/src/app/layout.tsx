@@ -31,8 +31,8 @@ export default async function RootLayout({
       <body className={`${inter.className} bg-tago-black min-h-screen antialiased`}>
         <Providers cookie={cookie}>
           <Navigation />
-          <main className="pt-20 pb-8 px-4">
-            <div className="max-w-lg mx-auto">{children}</div>
+          <main className="min-h-[calc(100vh-5rem)] pt-20 pb-8 px-4 flex items-center justify-center">
+            <div className="w-full max-w-lg">{children}</div>
           </main>
         </Providers>
       </body>

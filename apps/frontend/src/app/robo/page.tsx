@@ -19,6 +19,7 @@ import { useStrategies } from '@/hooks/useStrategies';
 import { PerformanceChart } from '@/components/PerformanceChart';
 import { useHyperliquidBalance } from '@/hooks/useHyperliquidBalance';
 import { RiskManagementTab } from '@/components/RiskManagementTab';
+import { useOneClickSetup, SetupStep } from '@/hooks/useOneClickSetup';
 
 type TabType = 'trade' | 'portfolio' | 'risk' | 'history';
 // Trade mode is now auto-detected: pair (1v1) or basket (multiple assets per side)
@@ -91,6 +92,17 @@ export default function RoboPage() {
     error: balanceError,
     refresh: refreshBalance,
   } = useHyperliquidBalance();
+
+  // One-click setup orchestration
+  const {
+    steps: setupSteps,
+    currentStep: setupCurrentStep,
+    isRunning: setupRunning,
+    isComplete: setupComplete,
+    error: setupError,
+    startSetup,
+    reset: resetSetup,
+  } = useOneClickSetup();
 
   // Tab state - sync with URL
   const [activeTab, setActiveTab] = useState<TabType>(urlTab || 'trade');
@@ -366,8 +378,25 @@ export default function RoboPage() {
         }
 
         showToast('error', 'Trade blocked by your risk settings', undefined, violations);
+      } else if (errorMessage.includes('Position size too small') || errorMessage.includes('MIN_SIZE_ERROR')) {
+        // Minimum position size error - show specific asset requirements
+        const match = errorMessage.match(/Each asset needs at least \$(\d+)/);
+        const minAmount = match ? match[1] : '10';
+        showToast('error', `Each asset needs at least $${minAmount} notional. Increase stake or leverage.`);
+      } else if (errorMessage.includes('rejected by the exchange') || errorMessage.includes('rejected by exchange')) {
+        // Exchange rejection - usually minimum notional or unsupported trade type
+        const friendlyMsg = stake * leverage < 10
+          ? 'Trade too small - minimum is $10 notional (stake × leverage)'
+          : 'Exchange rejected the trade - try increasing stake or adjusting assets';
+        showToast('error', friendlyMsg);
+      } else if (errorMessage.includes('insufficient') || errorMessage.includes('balance')) {
+        showToast('error', 'Not enough balance - deposit more USDC on Hyperliquid');
+      } else if (errorMessage.includes('not authenticated') || errorMessage.includes('unauthorized')) {
+        showToast('error', 'Session expired - please refresh and try again');
       } else {
-        showToast('error', errorMessage);
+        // Generic error - keep it simple
+        showToast('error', 'Trade failed - please try again');
+        console.error('Trade error details:', errorMessage);
       }
     } finally {
       setExecuting(false);
@@ -563,257 +592,139 @@ export default function RoboPage() {
     );
   }
 
-  // Step 2: Authenticate with Pear Protocol (only show if connected but not authenticated)
-  if (isConnected && !isAuthenticated) {
-    return (
-      <div className="space-y-6">
-        <Card>
-          <div className="p-4 flex items-center justify-between">
-            <div>
-              <span className="text-xs text-white/40 font-light">Connected</span>
-              <p className="text-sm text-white font-mono">{address?.slice(0, 6)}...{address?.slice(-4)}</p>
-            </div>
-            <ConnectButton.Custom>
-              {({ openAccountModal }) => (
-                <button onClick={openAccountModal} className="text-xs text-white/40 hover:text-white">
-                  Change
-                </button>
-              )}
-            </ConnectButton.Custom>
+  // One-Click Setup: Unified flow for all onboarding steps
+  // Shows when connected but setup is not complete
+  if (isConnected && !setupComplete) {
+    // Helper function to get step icon based on status
+    const getStepIcon = (step: SetupStep, index: number) => {
+      if (step.status === 'completed') {
+        return (
+          <div className="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center">
+            <svg className="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
           </div>
-        </Card>
-
-        <SwapPanel title="Authenticate" subtitle="Sign in to Pear Protocol">
-          <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08]">
-            <p className="text-sm text-white/60 font-light leading-relaxed">
-              Sign a message to authenticate with Pear Protocol. This enables AI trade suggestions
-              and execution on Hyperliquid.
-            </p>
+        );
+      }
+      if (step.status === 'in_progress') {
+        return (
+          <div className="w-6 h-6 rounded-full bg-tago-yellow-400/20 flex items-center justify-center">
+            <div className="w-3 h-3 rounded-full border-2 border-tago-yellow-400 border-t-transparent animate-spin" />
           </div>
-
-          {authError && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-              <p className="text-sm text-red-400">{authError}</p>
-            </div>
-          )}
-
-          <Button
-            variant="yellow"
-            fullWidth
-            size="lg"
-            onClick={authenticate}
-            loading={isAuthenticating || authLoading}
-          >
-            {isAuthenticating ? 'Signing...' : 'Sign to Authenticate'}
-          </Button>
-        </SwapPanel>
-      </div>
-    );
-  }
-
-  // Step 3: Setup Agent Wallet (Create + Approve on Hyperliquid)
-  if (isConnected && isAuthenticated && !agentWalletExists && !agentWalletLoading) {
-    // Sub-step: Need to create agent wallet first
-    if (!agentWalletAddress && !agentWalletNeedsApproval) {
+        );
+      }
+      if (step.status === 'error') {
+        return (
+          <div className="w-6 h-6 rounded-full bg-red-500/20 flex items-center justify-center">
+            <svg className="w-3.5 h-3.5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </div>
+        );
+      }
+      // Pending
       return (
-        <div className="space-y-6">
-          <Card>
-            <div className="p-4 flex items-center justify-between">
-              <div>
-                <span className="text-xs text-white/40 font-light">Authenticated</span>
-                <p className="text-sm text-white font-mono">{address?.slice(0, 6)}...{address?.slice(-4)}</p>
-              </div>
-              <Badge variant="success">Ready</Badge>
-            </div>
-          </Card>
-
-          <SwapPanel title="Setup Agent Wallet" subtitle="Step 1: Create wallet">
-            <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08]">
-              <p className="text-sm text-white/60 font-light leading-relaxed">
-                Create an agent wallet to allow Pear Protocol to execute trades on Hyperliquid on your behalf.
-              </p>
-            </div>
-
-            {agentWalletError && (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-                <p className="text-sm text-red-400">{agentWalletError}</p>
-              </div>
-            )}
-
-            <Button
-              variant="yellow"
-              fullWidth
-              size="lg"
-              onClick={() => createAgentWallet()}
-              loading={agentWalletCreating}
-            >
-              {agentWalletCreating ? 'Creating...' : 'Create Agent Wallet'}
-            </Button>
-          </SwapPanel>
+        <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center">
+          <span className="text-xs text-white/40 font-medium">{index + 1}</span>
         </div>
       );
-    }
+    };
 
-    // Sub-step: Agent wallet created, need Hyperliquid approval
     return (
       <div className="space-y-6">
-        <Card>
-          <div className="p-4 flex items-center justify-between">
-            <div>
-              <span className="text-xs text-white/40 font-light">Agent Wallet Created</span>
-              <p className="text-sm text-white font-mono">{agentWalletAddress?.slice(0, 6)}...{agentWalletAddress?.slice(-4)}</p>
-            </div>
-            <Badge variant="warning">Pending Approval</Badge>
+        <SwapPanel title="Complete Setup" subtitle="One-time setup to start trading">
+          {/* Progress Steps */}
+          <div className="space-y-3">
+            {setupSteps.map((step, idx) => (
+              <div
+                key={step.id}
+                className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
+                  step.status === 'in_progress'
+                    ? 'bg-tago-yellow-400/5 border border-tago-yellow-400/20'
+                    : step.status === 'completed'
+                    ? 'bg-green-500/5'
+                    : step.status === 'error'
+                    ? 'bg-red-500/5 border border-red-500/20'
+                    : 'bg-white/[0.02]'
+                }`}
+              >
+                {getStepIcon(step, idx)}
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm font-medium ${
+                    step.status === 'completed' ? 'text-green-400' :
+                    step.status === 'in_progress' ? 'text-tago-yellow-400' :
+                    step.status === 'error' ? 'text-red-400' :
+                    'text-white/60'
+                  }`}>
+                    {step.label}
+                  </p>
+                  {step.status === 'in_progress' && (
+                    <p className="text-xs text-white/40 mt-0.5">{step.description}</p>
+                  )}
+                  {step.status === 'error' && (
+                    <p className="text-xs text-red-400/70 mt-0.5">
+                      {step.error?.includes('rejected') || step.error?.includes('denied')
+                        ? 'Signature cancelled - click below to try again'
+                        : step.id === 'auth'
+                        ? 'Couldn\'t sign in - click below to try again'
+                        : step.id === 'agentWallet'
+                        ? 'Couldn\'t create wallet - click below to retry'
+                        : step.id === 'agentApproval'
+                        ? 'Approval failed - make sure you have USDC deposited'
+                        : step.id === 'builderFee'
+                        ? 'Fee approval failed - click below to retry'
+                        : step.id === 'saltAccount'
+                        ? 'Account creation failed - click below to retry'
+                        : 'Something went wrong - click below to retry'
+                      }
+                    </p>
+                  )}
+                  {/* Deposit warning for Hyperliquid step */}
+                  {step.id === 'agentApproval' && step.status !== 'completed' && hlBalance !== null && hlBalance.availableBalance === 0 && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="text-xs text-yellow-400/70">Requires USDC deposit</span>
+                      <a
+                        href="/onboard"
+                        className="text-xs text-tago-yellow-400 hover:underline"
+                      >
+                        Bridge →
+                      </a>
+                    </div>
+                  )}
+                </div>
+                {step.status === 'in_progress' && (
+                  <span className="text-xs text-tago-yellow-400/60">Waiting for signature...</span>
+                )}
+              </div>
+            ))}
           </div>
-        </Card>
 
-        <SwapPanel title="Approve on Hyperliquid" subtitle="Step 2: Sign approval">
-          <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 space-y-2">
-            <p className="text-sm text-yellow-400 font-medium">
-              Deposit required first
-            </p>
-            <p className="text-xs text-yellow-400/70">
-              Hyperliquid requires a USDC deposit before you can approve an agent wallet. Deposit any amount to continue.
-            </p>
-            <a
-              href="/onboard"
-              className="inline-block mt-2 text-sm text-tago-yellow-400 font-medium hover:underline"
-            >
-              Deposit USDC via Bridge →
-            </a>
-          </div>
-
-          <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08] space-y-3">
-            <p className="text-sm text-white/60 font-light leading-relaxed">
-              Sign a message to approve Pear Protocol to trade on Hyperliquid on your behalf. This is a one-time approval.
-            </p>
-            <div className="text-xs text-white/40 space-y-1">
-              <p>After approval, you also need to:</p>
-              <ul className="list-disc list-inside space-y-1 ml-2">
-                <li>Approve builder fee (0.06% per trade)</li>
-              </ul>
-            </div>
-          </div>
-
-          {agentWalletError && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-              <p className="text-sm text-red-400">{agentWalletError}</p>
-            </div>
-          )}
-
+          {/* Action Button */}
           <Button
             variant="yellow"
             fullWidth
             size="lg"
-            onClick={() => agentWalletAddress && approveAgentWallet(agentWalletAddress)}
-            loading={agentWalletApproving}
+            onClick={() => {
+              if (setupError) {
+                resetSetup();
+              }
+              startSetup();
+            }}
+            loading={setupRunning}
           >
-            {agentWalletApproving ? 'Approving...' : 'Approve Agent Wallet'}
-          </Button>
-        </SwapPanel>
-      </div>
-    );
-  }
-
-  // Step 3.5: Approve Builder Fee on Hyperliquid
-  if (isConnected && isAuthenticated && agentWalletExists && !builderFeeApproved && !builderFeeLoading) {
-    return (
-      <div className="space-y-6">
-        <Card>
-          <div className="p-4 flex items-center justify-between">
-            <div>
-              <span className="text-xs text-white/40 font-light">Agent Wallet</span>
-              <p className="text-sm text-white font-mono">{agentWalletAddress?.slice(0, 6)}...{agentWalletAddress?.slice(-4)}</p>
-            </div>
-            <Badge variant="success">Approved</Badge>
-          </div>
-        </Card>
-
-        <SwapPanel title="Approve Builder Fee" subtitle="Step 3: Enable trading fees">
-          <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08] space-y-3">
-            <p className="text-sm text-white/60 font-light leading-relaxed">
-              Authorize Pear Protocol to collect a small trading fee (0.1% max) on each trade. This is required by Hyperliquid for all builder integrations.
-            </p>
-            <div className="text-xs text-white/40">
-              <p>Pear builder address:</p>
-              <p className="font-mono text-white/60 break-all">0xA47D4d99191db54A4829cdf3de2417E527c3b042</p>
-            </div>
-          </div>
-
-          {needsChainSwitch && (
-            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3">
-              <p className="text-sm text-yellow-400">
-                Please switch to <strong>Arbitrum</strong> network in your wallet to sign this approval.
-              </p>
-            </div>
-          )}
-
-          {builderFeeError && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-              <p className="text-sm text-red-400">{builderFeeError}</p>
-            </div>
-          )}
-
-          <Button
-            variant="yellow"
-            fullWidth
-            size="lg"
-            onClick={approveBuilderFee}
-            loading={builderFeeApproving}
-            disabled={needsChainSwitch}
-          >
-            {builderFeeApproving ? 'Approving...' : needsChainSwitch ? 'Switch to Arbitrum' : 'Approve Builder Fee'}
+            {setupRunning
+              ? `${setupCurrentStep?.label || 'Processing'}...`
+              : setupError
+              ? 'Retry Setup'
+              : 'Complete Setup'
+            }
           </Button>
 
           <div className="text-center">
-            <a
-              href="/onboard"
-              className="text-xs text-tago-yellow-400 hover:underline"
-            >
-              Need to deposit USDC? Use our bridge →
-            </a>
-          </div>
-        </SwapPanel>
-      </div>
-    );
-  }
-
-  // Step 4: Create Salt Account
-  if (isConnected && isAuthenticated && agentWalletExists && builderFeeApproved && !account) {
-    return (
-      <div className="space-y-6">
-        <Card>
-          <div className="p-4 flex items-center justify-between">
-            <div>
-              <span className="text-xs text-white/40 font-light">Hyperliquid Ready</span>
-              <p className="text-sm text-white font-mono">{address?.slice(0, 6)}...{address?.slice(-4)}</p>
-            </div>
-            <Badge variant="success">All Approvals Complete</Badge>
-          </div>
-        </Card>
-
-        <SwapPanel title="Create Robo Account" subtitle="Set up your trading account">
-          <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08]">
-            <p className="text-sm text-white/60 font-light leading-relaxed">
-              Create a Salt robo account to track your trades and manage risk policies.
+            <p className="text-xs text-white/40">
+              This is a one-time setup. You'll sign 3 messages to enable trading.
             </p>
           </div>
-
-          {accountError && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-              <p className="text-sm text-red-400">{accountError}</p>
-            </div>
-          )}
-
-          <Button
-            variant="yellow"
-            fullWidth
-            size="lg"
-            onClick={createAccount}
-            loading={isCreating || accountLoading}
-          >
-            Create Robo Account
-          </Button>
         </SwapPanel>
       </div>
     );
