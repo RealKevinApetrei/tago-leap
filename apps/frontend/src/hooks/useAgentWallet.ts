@@ -159,22 +159,32 @@ export function useAgentWallet(): UseAgentWalletReturn {
 
       console.log('[useAgentWallet] Got signature, sending to Hyperliquid');
 
+      // Hyperliquid expects signature with r, s, v components
+      // The signature from signTypedData is already in the right format (0x + r + s + v)
+      const requestBody = {
+        action: {
+          type: 'approveAgent',
+          hyperliquidChain: 'Mainnet',
+          signatureChainId: signatureChainIdHex,
+          agentAddress: agentAddress,
+          agentName: 'Pear Protocol',
+          nonce: nonce,
+        },
+        nonce: nonce,
+        signature: {
+          r: signature.slice(0, 66),
+          s: '0x' + signature.slice(66, 130),
+          v: parseInt(signature.slice(130, 132), 16),
+        },
+      };
+
+      console.log('[useAgentWallet] Request body:', JSON.stringify(requestBody, null, 2));
+
       // Send approval to Hyperliquid API
       const response = await fetch('https://api.hyperliquid.xyz/exchange', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: {
-            type: 'approveAgent',
-            hyperliquidChain: 'Mainnet',
-            signatureChainId: signatureChainIdHex,
-            agentAddress,
-            agentName: 'Pear Protocol',
-            nonce,
-          },
-          nonce,
-          signature,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const responseText = await response.text();

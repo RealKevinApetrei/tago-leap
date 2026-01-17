@@ -15,6 +15,7 @@ import { useAgentWallet } from '@/hooks/useAgentWallet';
 import { useBuilderFee } from '@/hooks/useBuilderFee';
 import { usePositions } from '@/hooks/usePositions';
 import { useStrategies } from '@/hooks/useStrategies';
+import { PerformanceChart } from '@/components/PerformanceChart';
 
 type TabType = 'trade' | 'portfolio' | 'settings' | 'history';
 type TradeMode = 'pair' | 'basket';
@@ -645,6 +646,13 @@ export default function RoboPage() {
                   </div>
                 )}
               </div>
+
+              {/* Historical Performance Chart */}
+              <PerformanceChart
+                longAsset={suggestion.longAssets[0]?.asset}
+                shortAsset={suggestion.shortAssets[0]?.asset}
+                days={180}
+              />
 
               {/* Rationale */}
               <details className="group/rationale">
