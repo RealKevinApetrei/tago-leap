@@ -108,8 +108,17 @@ export async function tradesRoutes(app: FastifyInstance) {
     } = request.body;
 
     // Validate required fields
-    if (!userWalletAddress || !longAssets || !shortAssets || !stakeUsd || !leverage) {
-      return reply.badRequest('Missing required fields');
+    if (!userWalletAddress || !stakeUsd || !leverage) {
+      return reply.badRequest('Missing required fields: userWalletAddress, stakeUsd, leverage');
+    }
+
+    // Ensure arrays exist (can be empty for directional trades)
+    const longAssetsList = longAssets || [];
+    const shortAssetsList = shortAssets || [];
+
+    // Must have at least one asset on either side
+    if (longAssetsList.length === 0 && shortAssetsList.length === 0) {
+      return reply.badRequest('Need at least one asset (long or short) to execute trade');
     }
 
     if (stakeUsd < 1) {
@@ -172,8 +181,8 @@ export async function tradesRoutes(app: FastifyInstance) {
       executionType: 'MARKET' as const, // Pear API expects uppercase
       leverage,
       usdValue: stakeUsd,
-      longAssets: longAssets.map(a => ({ asset: a.asset, weight: a.weight })),
-      shortAssets: shortAssets.map(a => ({ asset: a.asset, weight: a.weight })),
+      longAssets: longAssetsList.map(a => ({ asset: a.asset, weight: a.weight })),
+      shortAssets: shortAssetsList.map(a => ({ asset: a.asset, weight: a.weight })),
     };
 
     // Create pending trade record with Salt metadata
@@ -526,8 +535,18 @@ export async function tradesRoutes(app: FastifyInstance) {
         data: positions,
       };
     } catch (err) {
-      app.log.error(err, 'Failed to fetch positions');
-      return reply.internalServerError('Failed to fetch positions');
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      const errorStack = err instanceof Error ? err.stack : undefined;
+
+      app.log.error({
+        msg: 'Failed to fetch positions from Pear API',
+        wallet,
+        error: errorMessage,
+        stack: errorStack,
+      }, 'Failed to fetch positions');
+
+      // Return actual error message for debugging
+      return reply.internalServerError(`Failed to fetch positions: ${errorMessage}`);
     }
   });
 
@@ -558,8 +577,9 @@ export async function tradesRoutes(app: FastifyInstance) {
         data: response,
       };
     } catch (err) {
-      app.log.error(err, 'Failed to close position');
-      return reply.internalServerError('Failed to close position');
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      app.log.error({ positionId: id, walletAddress, error: errorMessage }, 'Failed to close position');
+      return reply.internalServerError(`Failed to close position: ${errorMessage}`);
     }
   });
 

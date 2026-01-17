@@ -21,7 +21,7 @@ import { useHyperliquidBalance } from '@/hooks/useHyperliquidBalance';
 import { RiskManagementTab } from '@/components/RiskManagementTab';
 
 type TabType = 'trade' | 'portfolio' | 'risk' | 'history';
-type TradeMode = 'pair' | 'basket';
+// Trade mode is now auto-detected: pair (1v1) or basket (multiple assets per side)
 
 export default function RoboPage() {
   const searchParams = useSearchParams();
@@ -37,6 +37,7 @@ export default function RoboPage() {
   } = usePearAuth();
   const {
     account,
+    policy,
     trades,
     isLoading: accountLoading,
     isCreating,
@@ -106,9 +107,10 @@ export default function RoboPage() {
   const [suggestion, setSuggestion] = useState<NarrativeSuggestion | null>(null);
   const [stakeUsd, setStakeUsd] = useState('100');
   const [leverage, setLeverage] = useState(3);
-  const [tradeMode, setTradeMode] = useState<TradeMode>('pair');
+  // Trade mode auto-detected from suggestion assets
   const [loading, setLoading] = useState(false);
   const [executing, setExecuting] = useState(false);
+  const [isRefreshingAfterTrade, setIsRefreshingAfterTrade] = useState(false);
   const [tradeResult, setTradeResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -143,6 +145,27 @@ export default function RoboPage() {
   const [maxLeverage, setMaxLeverage] = useState('5');
   const [maxDailyNotional, setMaxDailyNotional] = useState('10000');
   const [maxDrawdown, setMaxDrawdown] = useState('10');
+  const [allowedTokens, setAllowedTokens] = useState<string[]>([
+    'BTC', 'ETH', 'SOL', 'LINK', 'ARB', 'OP', 'AVAX', 'DOGE', 'PEPE', 'WIF'
+  ]);
+
+  // Sync policy state from fetched policy
+  useEffect(() => {
+    if (policy) {
+      if (policy.max_leverage !== null && policy.max_leverage !== undefined) {
+        setMaxLeverage(String(policy.max_leverage));
+      }
+      if (policy.max_daily_notional_usd !== null && policy.max_daily_notional_usd !== undefined) {
+        setMaxDailyNotional(String(policy.max_daily_notional_usd));
+      }
+      if (policy.max_drawdown_pct !== null && policy.max_drawdown_pct !== undefined) {
+        setMaxDrawdown(String(policy.max_drawdown_pct));
+      }
+      if (policy.allowed_pairs && Array.isArray(policy.allowed_pairs)) {
+        setAllowedTokens(policy.allowed_pairs as string[]);
+      }
+    }
+  }, [policy]);
 
   // Advanced section state
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -184,6 +207,31 @@ export default function RoboPage() {
     });
   };
 
+  // Remove asset from suggestion
+  const removeAsset = (side: 'long' | 'short', assetToRemove: string) => {
+    if (!suggestion) return;
+    const assets = side === 'long' ? suggestion.longAssets : suggestion.shortAssets;
+    const filtered = assets.filter(a => a.asset !== assetToRemove);
+
+    // Don't allow removing all assets from a side
+    if (filtered.length === 0) {
+      showToast('error', `Cannot remove all ${side} assets`);
+      return;
+    }
+
+    // Redistribute weights among remaining assets
+    const totalWeight = filtered.reduce((sum, a) => sum + a.weight, 0);
+    const normalizedAssets = filtered.map(a => ({
+      ...a,
+      weight: totalWeight > 0 ? a.weight / totalWeight : 1 / filtered.length
+    }));
+
+    setSuggestion({
+      ...suggestion,
+      [side === 'long' ? 'longAssets' : 'shortAssets']: normalizedAssets,
+    });
+  };
+
   // Execute trade through Salt account (with policy validation)
   const handleExecute = async () => {
     if (!address || !suggestion || !account) {
@@ -213,14 +261,24 @@ export default function RoboPage() {
       return;
     }
 
+    // Filter out 0-weight assets before sending to backend
+    const activeLongAssets = suggestion.longAssets.filter(a => a.weight > 0);
+    const activeShortAssets = suggestion.shortAssets.filter(a => a.weight > 0);
+
+    // Validate we have at least one asset on either side (supports long-only or short-only trades)
+    if (activeLongAssets.length === 0 && activeShortAssets.length === 0) {
+      showToast('error', 'Need at least one asset with weight > 0%');
+      return;
+    }
+
     setExecuting(true);
     setToast(null);
 
     try {
       // Route through Salt service for policy validation before executing via Pear
       const result = await saltApi.executePairTrade(account.id, {
-        longAssets: suggestion.longAssets.map(a => ({ asset: a.asset, weight: a.weight })),
-        shortAssets: suggestion.shortAssets.map(a => ({ asset: a.asset, weight: a.weight })),
+        longAssets: activeLongAssets.map(a => ({ asset: a.asset, weight: a.weight })),
+        shortAssets: activeShortAssets.map(a => ({ asset: a.asset, weight: a.weight })),
         stakeUsd: stake,
         leverage,
       });
@@ -233,10 +291,13 @@ export default function RoboPage() {
       // Show success toast
       showToast('success', trade.status === 'completed' ? 'Trade executed successfully!' : `Trade submitted (${trade.status})`, trade.id);
 
-      // Refresh data
-      refreshTrades();
-      refreshPositions();
-      refreshBalance();
+      // Refresh data with loading state
+      setIsRefreshingAfterTrade(true);
+      try {
+        await Promise.all([refreshTrades(), refreshPositions(), refreshBalance()]);
+      } finally {
+        setIsRefreshingAfterTrade(false);
+      }
     } catch (err: any) {
       console.error('Failed to execute trade:', err);
       const errorMessage = err.tradeError?.message || err.message || 'Failed to execute trade';
@@ -244,30 +305,37 @@ export default function RoboPage() {
       // Parse policy violation errors for better display
       if (errorMessage.includes('Policy violation')) {
         // Extract individual violations from the message
-        const violations = errorMessage
+        const parts = errorMessage
           .replace('Policy violation: ', '')
           .replace('Policy violation:', '')
           .split(', ')
-          .filter((v: string) => v.trim())
-          .map((v: string) => {
-            // Make messages more actionable
-            if (v.includes('Leverage') && v.includes('exceeds')) {
-              const match = v.match(/(\d+)x exceeds.*?(\d+)x/);
-              if (match) {
-                return `Leverage too high: Using ${match[1]}x but your limit is ${match[2]}x. Go to Risk tab to increase.`;
-              }
+          .filter((v: string) => v.trim());
+
+        const violations: string[] = [];
+        const disallowedAssets: string[] = [];
+
+        for (const v of parts) {
+          if (v.includes('not in allowed pairs')) {
+            const assetMatch = v.match(/Asset (\w+) is not/);
+            if (assetMatch) {
+              disallowedAssets.push(assetMatch[1]);
             }
-            if (v.includes('not in allowed pairs')) {
-              const assetMatch = v.match(/Asset (\w+) is not/);
-              if (assetMatch) {
-                return `${assetMatch[1]} is not in your allowed tokens. Add it in the Risk tab.`;
-              }
+          } else if (v.includes('Leverage') && v.includes('exceeds')) {
+            const match = v.match(/(\d+)x exceeds.*?(\d+)x/);
+            if (match) {
+              violations.push(`Leverage too high: Using ${match[1]}x but your limit is ${match[2]}x. Go to Risk tab to increase.`);
             }
-            if (v.includes('notional') && v.includes('exceeds')) {
-              return `Daily trading limit exceeded. Wait until tomorrow or increase limit in Risk tab.`;
-            }
-            return v;
-          });
+          } else if (v.includes('notional') && v.includes('exceeds')) {
+            violations.push('Daily trading limit exceeded. Wait until tomorrow or increase limit in Risk tab.');
+          } else {
+            violations.push(v);
+          }
+        }
+
+        // Add collected disallowed assets as single message at the top
+        if (disallowedAssets.length > 0) {
+          violations.unshift(`Disallowed tokens: ${disallowedAssets.join(', ')}. Remove them or add to Risk settings.`);
+        }
 
         showToast('error', 'Trade blocked by your risk settings', undefined, violations);
       } else {
@@ -277,11 +345,6 @@ export default function RoboPage() {
       setExecuting(false);
     }
   };
-
-  // Allowed tokens state (will be managed by RiskManagementTab)
-  const [allowedTokens, setAllowedTokens] = useState<string[]>([
-    'BTC', 'ETH', 'SOL', 'LINK', 'ARB', 'OP', 'AVAX', 'DOGE', 'PEPE', 'WIF'
-  ]);
 
   // Save policy
   const handleSavePolicy = async (tokens?: string[]) => {
@@ -817,38 +880,6 @@ export default function RoboPage() {
           {/* AI Suggestion Display */}
           {suggestion && (
             <>
-              {/* Trade Mode Toggle */}
-              <div className="space-y-2">
-                <label className="block text-sm font-light text-white/70">Trade Mode</label>
-                <div className="flex gap-2 p-1 bg-white/[0.03] rounded-lg border border-white/[0.08]">
-                  <button
-                    onClick={() => setTradeMode('pair')}
-                    className={`flex-1 py-2 px-3 text-sm rounded-md transition-all ${
-                      tradeMode === 'pair'
-                        ? 'bg-tago-yellow-400 text-black font-medium'
-                        : 'text-white/60 hover:text-white'
-                    }`}
-                  >
-                    Pair Trade
-                  </button>
-                  <button
-                    onClick={() => setTradeMode('basket')}
-                    className={`flex-1 py-2 px-3 text-sm rounded-md transition-all ${
-                      tradeMode === 'basket'
-                        ? 'bg-tago-yellow-400 text-black font-medium'
-                        : 'text-white/60 hover:text-white'
-                    }`}
-                  >
-                    Basket Trade
-                  </button>
-                </div>
-                <p className="text-xs text-white/40">
-                  {tradeMode === 'pair'
-                    ? 'Trade one asset against another (e.g., long SOL / short ETH)'
-                    : 'Trade a basket of assets against a benchmark'}
-                </p>
-              </div>
-
               {/* VS Battle Card */}
               <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-white/[0.05] to-transparent border border-white/[0.08] p-6">
                 <div className="absolute top-0 left-0 w-32 h-32 bg-green-500/20 blur-3xl rounded-full -translate-x-1/2 -translate-y-1/2" />
@@ -858,11 +889,29 @@ export default function RoboPage() {
                   <div className="flex-1 text-center">
                     <div className="text-xs uppercase tracking-widest text-green-400/60 mb-2">Long</div>
                     <div className="flex flex-wrap justify-center gap-1.5">
-                      {suggestion.longAssets.map((asset) => (
-                        <span key={asset.asset} className="px-3 py-1.5 bg-green-500/10 border border-green-500/30 rounded-full text-green-400 text-sm font-medium">
-                          {asset.asset}
-                        </span>
-                      ))}
+                      {suggestion.longAssets.map((asset) => {
+                        const isDisallowed = !allowedTokens.includes(asset.asset);
+                        return (
+                          <span
+                            key={asset.asset}
+                            className={`group relative px-3 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-all ${
+                              isDisallowed
+                                ? 'bg-orange-500/20 border border-orange-500/50 text-orange-400'
+                                : 'bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20'
+                            }`}
+                            title={isDisallowed ? `${asset.asset} is not in your allowed tokens - click to remove` : `Click to remove ${asset.asset}`}
+                            onClick={() => removeAsset('long', asset.asset)}
+                          >
+                            {asset.asset}
+                            {isDisallowed && <span className="ml-1 text-orange-400/80">!</span>}
+                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-white/20 rounded-full opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                              <svg className="w-2.5 h-2.5 text-white/80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </span>
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -875,11 +924,29 @@ export default function RoboPage() {
                   <div className="flex-1 text-center">
                     <div className="text-xs uppercase tracking-widest text-red-400/60 mb-2">Short</div>
                     <div className="flex flex-wrap justify-center gap-1.5">
-                      {suggestion.shortAssets.map((asset) => (
-                        <span key={asset.asset} className="px-3 py-1.5 bg-red-500/10 border border-red-500/30 rounded-full text-red-400 text-sm font-medium">
-                          {asset.asset}
-                        </span>
-                      ))}
+                      {suggestion.shortAssets.map((asset) => {
+                        const isDisallowed = !allowedTokens.includes(asset.asset);
+                        return (
+                          <span
+                            key={asset.asset}
+                            className={`group relative px-3 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-all ${
+                              isDisallowed
+                                ? 'bg-orange-500/20 border border-orange-500/50 text-orange-400'
+                                : 'bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20'
+                            }`}
+                            title={isDisallowed ? `${asset.asset} is not in your allowed tokens - click to remove` : `Click to remove ${asset.asset}`}
+                            onClick={() => removeAsset('short', asset.asset)}
+                          >
+                            {asset.asset}
+                            {isDisallowed && <span className="ml-1 text-orange-400/80">!</span>}
+                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-white/20 rounded-full opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                              <svg className="w-2.5 h-2.5 text-white/80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </span>
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -1004,8 +1071,12 @@ export default function RoboPage() {
               {/* Trade Summary */}
               <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08] space-y-3">
                 <div className="flex justify-between text-sm">
-                  <span className="text-white/40 font-light">Mode</span>
-                  <span className="text-white font-light capitalize">{tradeMode}</span>
+                  <span className="text-white/40 font-light">Type</span>
+                  <span className="text-white font-light">
+                    {suggestion.longAssets.filter(a => a.weight > 0).length === 0 ? 'Short Only' :
+                     suggestion.shortAssets.filter(a => a.weight > 0).length === 0 ? 'Long Only' :
+                     (suggestion.longAssets.filter(a => a.weight > 0).length + suggestion.shortAssets.filter(a => a.weight > 0).length) > 2 ? 'Basket' : 'Pair'}
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-white/40 font-light">Stake</span>
@@ -1069,6 +1140,33 @@ export default function RoboPage() {
                 </div>
               </div>
 
+              {/* Pre-execution warning for disallowed assets */}
+              {suggestion && (() => {
+                const disallowedLong = suggestion.longAssets.filter(a => a.weight > 0 && !allowedTokens.includes(a.asset));
+                const disallowedShort = suggestion.shortAssets.filter(a => a.weight > 0 && !allowedTokens.includes(a.asset));
+                const allDisallowed = [...disallowedLong, ...disallowedShort];
+
+                if (allDisallowed.length > 0) {
+                  return (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl mb-3">
+                      <div className="flex items-start gap-2">
+                        <svg className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <div className="text-sm">
+                          <p className="text-amber-400 font-medium">Disallowed tokens detected</p>
+                          <p className="text-white/50 text-xs mt-1">
+                            {allDisallowed.map(a => a.asset).join(', ')} not in your allowed list.
+                            Click tokens to remove or add them in Risk settings.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
               <Button
                 variant="yellow"
                 fullWidth
@@ -1082,7 +1180,7 @@ export default function RoboPage() {
               >
                 {hlBalance && hlBalance.availableBalance < (parseFloat(stakeUsd || '0') * leverage)
                   ? 'Insufficient Balance'
-                  : `Execute ${tradeMode === 'pair' ? 'Pair' : 'Basket'} Trade`}
+                  : 'Execute Trade'}
               </Button>
             </>
           )}
@@ -1095,26 +1193,69 @@ export default function RoboPage() {
         <SwapPanel title="Portfolio" subtitle="Your open positions and P&L">
           {/* Portfolio Summary */}
           <div className="bg-gradient-to-br from-white/[0.05] to-transparent border border-white/[0.08] rounded-xl p-4 space-y-3">
+            {/* Account Equity from Hyperliquid */}
             <div className="flex justify-between items-center">
-              <span className="text-sm text-white/40 font-light">Portfolio Value</span>
-              <span className="text-lg text-white font-medium">${totalValue.toFixed(2)}</span>
+              <span className="text-sm text-white/40 font-light">Account Equity</span>
+              {balanceLoading ? (
+                <span className="text-sm text-white/40">Loading...</span>
+              ) : balanceError ? (
+                <span className="text-sm text-white/40">--</span>
+              ) : (
+                <span className="text-lg text-white font-medium">
+                  ${hlBalance?.equity?.toFixed(2) || '0.00'}
+                </span>
+              )}
             </div>
+
+            {/* Available Balance */}
             <div className="flex justify-between items-center">
-              <span className="text-sm text-white/40 font-light">Unrealized P&L</span>
-              <div className="flex items-center gap-2">
-                <span className={`text-lg font-medium ${totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}
-                </span>
-                <span className={`text-sm ${totalPnl >= 0 ? 'text-green-400/60' : 'text-red-400/60'}`}>
-                  ({totalPnlPercent >= 0 ? '+' : ''}{totalPnlPercent.toFixed(1)}%)
-                </span>
+              <span className="text-sm text-white/40 font-light">Available</span>
+              <span className="text-sm text-emerald-400">
+                ${hlBalance?.availableBalance?.toFixed(2) || '0.00'}
+              </span>
+            </div>
+
+            {/* Positions Value (if any) */}
+            {positions.length > 0 && (
+              <div className="flex justify-between items-center border-t border-white/[0.08] pt-3">
+                <span className="text-sm text-white/40 font-light">Positions Value</span>
+                <span className="text-lg text-white font-medium">${totalValue.toFixed(2)}</span>
               </div>
-            </div>
+            )}
+
+            {/* Unrealized P&L */}
+            {(hlBalance?.unrealizedPnl !== 0 || positions.length > 0) && (
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-white/40 font-light">Unrealized P&L</span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-lg font-medium ${(hlBalance?.unrealizedPnl ?? totalPnl) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {(hlBalance?.unrealizedPnl ?? totalPnl) >= 0 ? '+' : ''}${(hlBalance?.unrealizedPnl ?? totalPnl).toFixed(2)}
+                  </span>
+                  {positions.length > 0 && (
+                    <span className={`text-sm ${totalPnl >= 0 ? 'text-green-400/60' : 'text-red-400/60'}`}>
+                      ({totalPnlPercent >= 0 ? '+' : ''}{totalPnlPercent.toFixed(1)}%)
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
+          {/* Positions Error with Retry */}
           {positionsError && (
-            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
-              <p className="text-sm text-red-400 font-light">{positionsError}</p>
+            <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div className="flex-1">
+                  <p className="text-sm text-red-400 font-medium">Failed to load positions</p>
+                  <p className="text-xs text-white/40 mt-1">{positionsError}</p>
+                  <Button variant="ghost" size="sm" onClick={refreshPositions} className="mt-2">
+                    Retry
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1122,9 +1263,14 @@ export default function RoboPage() {
           <div className="space-y-2">
             <h3 className="text-sm font-light text-white/70">Open Positions</h3>
 
-            {positionsLoading ? (
+            {(positionsLoading || isRefreshingAfterTrade) ? (
               <div className="text-center py-8">
-                <p className="text-white/40 font-light">Loading positions...</p>
+                <div className="inline-flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/20 border-t-tago-yellow-400" />
+                  <p className="text-white/40 font-light">
+                    {isRefreshingAfterTrade ? 'Updating positions...' : 'Loading positions...'}
+                  </p>
+                </div>
               </div>
             ) : positions.length === 0 ? (
               <div className="text-center py-8 bg-white/[0.02] rounded-xl border border-white/[0.05]">
@@ -1222,28 +1368,39 @@ export default function RoboPage() {
 
       {/* History Tab */}
       {activeTab === 'history' && (
-        <SwapPanel title="Trade History" subtitle="Your recent AI-generated trades">
-          {trades.length === 0 ? (
+        <SwapPanel title="Trade History" subtitle="Your recent trades">
+          {accountLoading ? (
+            <div className="text-center py-8">
+              <p className="text-white/40 font-light">Loading trade history...</p>
+            </div>
+          ) : trades.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-white/40 font-light">No trades yet</p>
-              <p className="text-xs text-white/30 mt-1">Generate your first AI trade above</p>
+              <p className="text-xs text-white/30 mt-1">Execute a trade to see it here</p>
             </div>
           ) : (
             <div className="space-y-2">
               {trades.map((trade) => (
                 <div
                   key={trade.id}
-                  className="flex items-center justify-between p-3 bg-white/[0.03] rounded-lg border border-white/[0.08]"
+                  className="p-3 bg-white/[0.03] rounded-lg border border-white/[0.08] hover:border-white/[0.12] transition-colors"
                 >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white font-light truncate">
-                      {trade.narrative_id || 'AI Trade'}
-                    </p>
-                    <p className="text-xs text-white/40">
-                      {trade.direction} · ${trade.stake_usd}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-sm text-white font-light truncate">
+                          {trade.narrative_id || 'Direct Trade'}
+                        </p>
+                        {trade.source === 'salt' && (
+                          <span className="text-[10px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">
+                            Robo
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-white/40">
+                        {trade.direction} · ${trade.stake_usd} · {new Date(trade.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
                     <Badge
                       variant={
                         trade.status === 'completed' ? 'success' :

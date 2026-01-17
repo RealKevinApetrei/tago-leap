@@ -64,13 +64,24 @@ export function useSaltAccount(): UseSaltAccountReturn {
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch account details by ID
+  // Fetch account details by ID (including trades)
   const fetchAccountDetails = useCallback(async (accountId: string) => {
     try {
       const details = await saltApi.getAccount(accountId);
       setAccount(details.account);
       setPolicy(details.policy);
       setStrategies(details.strategies || []);
+
+      // Also fetch trades if account has salt_account_address
+      if (details.account?.salt_account_address) {
+        try {
+          const accountTrades = await pearApi.getTradesByAccount(details.account.salt_account_address);
+          setTrades(accountTrades);
+        } catch (tradeErr) {
+          console.error('[useSaltAccount] Failed to fetch trades:', tradeErr);
+          // Don't fail the whole operation, just log it
+        }
+      }
     } catch (err) {
       console.error('[useSaltAccount] Failed to fetch account details:', err);
     }
