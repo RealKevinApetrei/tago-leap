@@ -74,10 +74,10 @@ export interface PearPosition {
   updatedAt: string;
 }
 
-// Order types
+// Order types - Pear API uses uppercase execution types
 export interface OpenPositionPayload {
   slippage: number;
-  executionType: 'market' | 'limit';
+  executionType: 'MARKET' | 'LIMIT' | 'TWAP' | 'LADDER';
   leverage: number;
   usdValue: number;
   longAssets: Array<{ asset: string; weight: number }>;
@@ -105,11 +105,12 @@ export interface EIP712Message {
     name: string;
     version: string;
     chainId: number;
-    verifyingContract: string;
+    verifyingContract?: string;
   };
   types: Record<string, Array<{ name: string; type: string }>>;
   primaryType: string;
   message: Record<string, unknown>;
+  timestamp: number;
 }
 
 export interface AuthTokens {
@@ -122,7 +123,7 @@ export interface AuthTokens {
 export interface AuthenticatePayload {
   walletAddress: string;
   signature: string;
-  message: EIP712Message;
+  timestamp: number;
 }
 
 // AI Narrative Suggestion types

@@ -52,6 +52,29 @@ export async function getSaltAccountById(
   return data;
 }
 
+export interface SaltAccountWithUser extends SaltAccount {
+  users: {
+    wallet_address: string;
+  };
+}
+
+export async function getSaltAccountWithUser(
+  supabase: SupabaseAdminClient,
+  accountId: string
+): Promise<SaltAccountWithUser | null> {
+  const { data, error } = await supabase
+    .from('salt_accounts')
+    .select('*, users!inner(wallet_address)')
+    .eq('id', accountId)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    throw new Error(`Failed to get salt account with user: ${error.message}`);
+  }
+
+  return data as SaltAccountWithUser | null;
+}
+
 export async function getSaltAccountByUserId(
   supabase: SupabaseAdminClient,
   userId: string
@@ -296,4 +319,40 @@ export async function completeStrategyRun(
   }
 
   return data;
+}
+
+export async function getStrategyRunsByAccountId(
+  supabase: SupabaseAdminClient,
+  saltAccountId: string,
+  limit: number = 20
+): Promise<StrategyRun[]> {
+  // Get strategy IDs for this account
+  const { data: strategies, error: strategiesError } = await supabase
+    .from('salt_strategies')
+    .select('id')
+    .eq('salt_account_id', saltAccountId);
+
+  if (strategiesError) {
+    throw new Error(`Failed to get strategies: ${strategiesError.message}`);
+  }
+
+  if (!strategies || strategies.length === 0) {
+    return [];
+  }
+
+  const strategyIds = strategies.map(s => s.id);
+
+  // Get recent runs for these strategies
+  const { data, error } = await supabase
+    .from('strategy_runs')
+    .select('*')
+    .in('strategy_id', strategyIds)
+    .order('started_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`Failed to get strategy runs: ${error.message}`);
+  }
+
+  return data || [];
 }

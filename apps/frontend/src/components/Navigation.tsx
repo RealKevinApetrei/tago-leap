@@ -7,8 +7,7 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 
 const navItems = [
   { label: 'Onboard', href: '/onboard' },
-  { label: 'Trade', href: '/narratives' },
-  { label: 'Robo', href: '/robo' },
+  { label: 'Trade', href: '/robo' },
 ];
 
 export function Navigation() {

@@ -88,38 +88,54 @@ export async function getValidAccessToken(
   supabase: SupabaseClient<Database>,
   walletAddress: string
 ): Promise<string | null> {
+  console.log('[authRepo] Getting valid access token for:', walletAddress);
+
   const stored = await getAuthTokens(supabase, walletAddress);
 
   if (!stored) {
+    console.log('[authRepo] No stored tokens found');
     return null;
   }
 
   const accessExpiresAt = new Date(stored.access_token_expires_at);
   const refreshExpiresAt = new Date(stored.refresh_token_expires_at);
+  const now = new Date();
+
+  console.log('[authRepo] Token status:', {
+    accessExpiresAt: accessExpiresAt.toISOString(),
+    refreshExpiresAt: refreshExpiresAt.toISOString(),
+    now: now.toISOString(),
+    accessExpired: isTokenExpired(accessExpiresAt),
+    refreshExpired: isTokenExpired(refreshExpiresAt),
+  });
 
   // Check if refresh token is expired
   if (isTokenExpired(refreshExpiresAt)) {
-    // Need to re-authenticate
+    console.log('[authRepo] Refresh token expired - need to re-authenticate');
     await deleteAuthTokens(supabase, walletAddress);
     return null;
   }
 
   // Check if access token is expired
   if (isTokenExpired(accessExpiresAt)) {
+    console.log('[authRepo] Access token expired - attempting refresh');
     try {
       // Refresh the access token
       const newTokens = await refreshAccessToken(stored.refresh_token);
+      console.log('[authRepo] Token refresh successful');
 
       // Save new tokens
       await saveAuthTokens(supabase, stored.user_id, walletAddress, newTokens);
 
       return newTokens.accessToken;
-    } catch {
+    } catch (err) {
+      console.error('[authRepo] Token refresh failed:', err);
       // Refresh failed, need to re-authenticate
       await deleteAuthTokens(supabase, walletAddress);
       return null;
     }
   }
 
+  console.log('[authRepo] Using existing valid access token');
   return stored.access_token;
 }

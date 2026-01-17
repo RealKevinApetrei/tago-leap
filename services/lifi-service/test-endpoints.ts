@@ -94,7 +94,7 @@ async function testPostQuote() {
     fromChainId: 1,
     fromTokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC on Ethereum
     amount: '1000000', // 1 USDC (6 decimals)
-    toTokenAddress: '0xHYPER_USDC_PLACEHOLDER',
+    toTokenAddress: '0xb88339CB7199b77E23DB6E890353E22632Ba630f', // USDC on HyperEVM
   };
 
   const response = await fetch(`${BASE_URL}/onboard/quote`, {
@@ -312,7 +312,7 @@ async function testQuoteWithSaltWallet() {
     fromChainId: 1,
     fromTokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
     amount: '1000000',
-    toTokenAddress: '0xHYPER_USDC_PLACEHOLDER',
+    toTokenAddress: '0xb88339CB7199b77E23DB6E890353E22632Ba630f', // USDC on HyperEVM
     depositToSaltWallet: true,
   };
 

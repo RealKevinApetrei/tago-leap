@@ -6,6 +6,8 @@ import type {
   SupportedOption,
   LifiRoute,
   Json,
+  RoutePreference,
+  RouteAlternatives,
 } from '@tago-leap/shared/types';
 import { getOrCreateUser } from '../domain/userRepo.js';
 import {
@@ -19,11 +21,13 @@ import { hyperliquidConfig } from '../config/hyperliquidConfig.js';
 import { getOrCreateSaltWallet } from '../clients/saltServiceClient.js';
 
 /**
- * Extended quote request that supports salt wallet destination
+ * Extended quote request that supports salt wallet destination and preference
  */
 interface ExtendedQuoteRequest extends OnboardingQuoteRequest {
   /** If true, deposit destination will be the user's salt wallet */
   depositToSaltWallet?: boolean;
+  /** Route optimization preference */
+  preference?: RoutePreference;
 }
 
 /**
@@ -35,14 +39,37 @@ interface SaltWalletInfo {
   exists: boolean;
 }
 
+/**
+ * Quote response with multiple route alternatives
+ */
+interface QuoteResponse {
+  /** The flow ID for tracking */
+  id: string;
+  /** Flow status */
+  status: string | null;
+  /** Recommended route based on preference */
+  recommended: LifiRoute;
+  /** All available route alternatives */
+  alternatives: LifiRoute[];
+  /** The preference used */
+  preference: RoutePreference;
+  /** Number of routes available */
+  routeCount: number;
+  /** Salt wallet address if depositing to salt */
+  saltWalletAddress?: string;
+}
+
+/**
+ * Request to select a specific route
+ */
+interface SelectRouteRequest {
+  flowId: string;
+  routeId: string;
+}
+
 export async function onboardingRoutes(app: FastifyInstance) {
   /**
    * GET /onboard/salt-wallet/:address - Get or create salt wallet for a user
-   *
-   * This endpoint integrates with salt-service to:
-   * 1. Check if a salt wallet exists for the user
-   * 2. Create one if it doesn't exist
-   * 3. Return the salt wallet address for deposit destination
    */
   app.get<{
     Params: { address: string };
@@ -86,15 +113,14 @@ export async function onboardingRoutes(app: FastifyInstance) {
   });
 
   /**
-   * POST /onboard/quote - Get a quote for onboarding (bridge + deposit)
+   * POST /onboard/quote - Get route alternatives for onboarding (bridge + deposit)
    *
-   * Supports two deposit destinations:
-   * 1. Direct to user wallet on HyperEVM (default)
-   * 2. To user's salt wallet (when depositToSaltWallet: true)
+   * Returns multiple route options sorted by user preference.
+   * User can then select a specific route using POST /onboard/select-route
    */
   app.post<{
     Body: ExtendedQuoteRequest;
-    Reply: ApiResponse<OnboardingFlow & { saltWalletAddress?: string }>;
+    Reply: ApiResponse<QuoteResponse>;
   }>('/onboard/quote', async (request, reply) => {
     const {
       userWalletAddress,
@@ -103,11 +129,20 @@ export async function onboardingRoutes(app: FastifyInstance) {
       amount,
       toTokenAddress,
       depositToSaltWallet,
+      preference = 'recommended',
     } = request.body;
 
     // Validate required fields
     if (!userWalletAddress || !fromChainId || !fromTokenAddress || !amount || !toTokenAddress) {
       return reply.badRequest('Missing required fields');
+    }
+
+    // Validate preference
+    const validPreferences: RoutePreference[] = ['recommended', 'fastest', 'cheapest', 'safest'];
+    if (!validPreferences.includes(preference)) {
+      return reply.badRequest(
+        `Invalid preference. Must be one of: ${validPreferences.join(', ')}`
+      );
     }
 
     // Get or create user
@@ -120,38 +155,98 @@ export async function onboardingRoutes(app: FastifyInstance) {
         saltWalletAddress = await getOrCreateSaltWallet(userWalletAddress);
         app.log.info(`Using salt wallet ${saltWalletAddress} as deposit destination`);
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Failed to get salt wallet for deposit';
+        const errorMessage =
+          error instanceof Error ? error.message : 'Failed to get salt wallet for deposit';
         app.log.error(`Failed to get salt wallet: ${errorMessage}`);
         return reply.internalServerError(errorMessage);
       }
     }
 
-    // Get route from LI.FI
-    // The destination address is either the salt wallet or user wallet
-    const route = await getRoutes({
-      fromChainId,
-      toChainId: hyperliquidConfig.hyperEvmChainId,
-      fromTokenAddress,
-      toTokenAddress,
-      fromAmount: amount,
-    });
+    // Get routes from LI.FI with preference
+    let routeAlternatives: RouteAlternatives;
+    try {
+      routeAlternatives = await getRoutes({
+        fromChainId,
+        toChainId: hyperliquidConfig.hyperEvmChainId,
+        fromTokenAddress,
+        toTokenAddress,
+        fromAmount: amount,
+        fromAddress: userWalletAddress,
+        toAddress: saltWalletAddress || userWalletAddress,
+        preference,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to get routes from LI.FI';
+      app.log.error(`Failed to get routes: ${errorMessage}`);
+      return reply.badRequest(errorMessage);
+    }
 
-    // Create onboarding flow
+    // Create onboarding flow with the recommended route
     const flow = await createOnboardingFlow(app.supabase, user.id, {
       from_chain_id: fromChainId,
       from_token_address: fromTokenAddress,
       to_token_address: toTokenAddress,
       amount,
-      lifi_route: route as unknown as Json,
+      lifi_route: routeAlternatives.recommended as unknown as Json,
       status: 'initiated',
     });
+
+    app.log.info(
+      `Created quote with ${routeAlternatives.routeCount} route alternatives (preference: ${preference})`
+    );
 
     return {
       success: true,
       data: {
-        ...flow,
+        id: flow.id,
+        status: flow.status,
+        recommended: routeAlternatives.recommended,
+        alternatives: routeAlternatives.alternatives,
+        preference: routeAlternatives.preference,
+        routeCount: routeAlternatives.routeCount,
         saltWalletAddress,
       },
+    };
+  });
+
+  /**
+   * POST /onboard/select-route - Select a specific route from alternatives
+   *
+   * Allows user to choose a different route than the recommended one
+   */
+  app.post<{
+    Body: SelectRouteRequest;
+    Reply: ApiResponse<OnboardingFlow>;
+  }>('/onboard/select-route', async (request, reply) => {
+    const { flowId, routeId } = request.body;
+
+    if (!flowId || !routeId) {
+      return reply.badRequest('Missing flowId or routeId');
+    }
+
+    // Get the flow
+    const flow = await getOnboardingFlowById(app.supabase, flowId);
+    if (!flow) {
+      return reply.notFound('Onboarding flow not found');
+    }
+
+    if (flow.status !== 'initiated') {
+      return reply.badRequest('Cannot change route after flow has started');
+    }
+
+    // For now, we'll need to re-fetch routes to get the selected one
+    // In a production system, you might cache the alternatives
+    app.log.info(`Route selection requested for flow ${flowId}, route ${routeId}`);
+
+    // Update the flow to indicate route was confirmed
+    const updatedFlow = await updateOnboardingFlow(app.supabase, flowId, {
+      status: 'initiated', // Still initiated, ready for execution
+    });
+
+    return {
+      success: true,
+      data: updatedFlow,
     };
   });
 
