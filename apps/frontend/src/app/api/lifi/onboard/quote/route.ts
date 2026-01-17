@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRoutes } from '@/lib/api-server/clients/lifiClient';
 import { getOrCreateUser } from '@/lib/api-server/domain/userRepo';
 import { getSupabaseAdmin } from '@/lib/api-server/supabase';
-import { serverEnv } from '@/lib/api-server/env';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,6 +11,7 @@ export async function POST(request: NextRequest) {
       fromTokenAddress,
       amount,
       toTokenAddress,
+      toChainId,
       depositToSaltWallet,
       preference = 'recommended',
     } = await request.json();
@@ -47,9 +47,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Get routes from LI.FI
+    // Always bridge to Arbitrum (42161) since Hyperliquid Bridge2 is on Arbitrum
+    // The frontend then deposits to Hyperliquid via the Bridge2 contract
+    const ARBITRUM_CHAIN_ID = 42161;
+    const destinationChainId = toChainId || ARBITRUM_CHAIN_ID;
+
     const routeAlternatives = await getRoutes({
       fromChainId,
-      toChainId: serverEnv.HYPEREVM_CHAIN_ID,
+      toChainId: destinationChainId,
       fromTokenAddress,
       toTokenAddress,
       fromAmount: amount,
@@ -68,6 +73,8 @@ export async function POST(request: NextRequest) {
         preference: routeAlternatives.preference,
         routeCount: routeAlternatives.routeCount,
         saltWalletAddress,
+        // Raw LI.FI route for frontend SDK execution
+        rawRoute: routeAlternatives.recommended?.raw || null,
       },
     });
   } catch (err: any) {

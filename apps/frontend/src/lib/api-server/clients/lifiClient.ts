@@ -4,6 +4,52 @@ import type { SupportedOption, LifiRoute, RoutePreference, RouteAlternatives } f
 const LIFI_API = serverEnv.LIFI_API_BASE_URL;
 const INTEGRATOR = serverEnv.LIFI_INTEGRATOR;
 
+// Helper functions
+function formatAmount(amount: string, decimals: number): string {
+  try {
+    const value = BigInt(amount);
+    const divisor = BigInt(10 ** decimals);
+    const integerPart = value / divisor;
+    const fractionalPart = value % divisor;
+    const fractionalStr = fractionalPart.toString().padStart(decimals, '0');
+    const trimmed = fractionalStr.replace(/0+$/, '').padEnd(2, '0').slice(0, 6);
+    return `${integerPart}.${trimmed}`;
+  } catch {
+    return '0.00';
+  }
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) {
+    return `~${seconds} seconds`;
+  } else if (seconds < 3600) {
+    const minutes = Math.ceil(seconds / 60);
+    return `~${minutes} minute${minutes > 1 ? 's' : ''}`;
+  } else {
+    const hours = Math.ceil(seconds / 3600);
+    return `~${hours} hour${hours > 1 ? 's' : ''}`;
+  }
+}
+
+function getChainName(chainId: number): string {
+  const names: Record<number, string> = {
+    1: 'Ethereum',
+    42161: 'Arbitrum',
+    10: 'Optimism',
+    137: 'Polygon',
+    56: 'BNB Chain',
+    43114: 'Avalanche',
+    8453: 'Base',
+    324: 'zkSync Era',
+    59144: 'Linea',
+    534352: 'Scroll',
+    250: 'Fantom',
+    100: 'Gnosis',
+    999: 'HyperEVM',
+  };
+  return names[chainId] || `Chain ${chainId}`;
+}
+
 interface LifiChain {
   id: number;
   name: string;
@@ -146,21 +192,89 @@ export async function getRoutes(params: GetRoutesParams): Promise<RouteAlternati
     throw new Error('No routes found for this swap');
   }
 
-  // Simplified route mapping - pass through the raw route data
-  const routes = data.routes.map((route: any, index: number) => ({
-    routeId: route.id,
-    fromChainId: route.fromChainId,
-    toChainId: route.toChainId,
-    fromToken: route.fromToken.address,
-    toToken: route.toToken.address,
-    fromAmount: route.fromAmount,
-    toAmount: route.toAmount,
-    toAmountMin: route.toAmountMin,
-    steps: route.steps,
-    tags: route.tags || [],
-    // Pass through raw data for frontend to use
-    raw: route,
-  }));
+  // Map routes with fee information for frontend display
+  const routes = data.routes.map((route: any) => {
+    // Calculate fees from steps
+    let totalGasCostUsd = 0;
+    let totalProtocolFeeUsd = 0;
+    let totalDurationSeconds = 0;
+
+    const mappedSteps = (route.steps || []).map((step: any, stepIndex: number) => {
+      const stepGasCost = step.estimate?.gasCosts?.reduce(
+        (sum: number, gc: any) => sum + Number(gc.amountUSD || 0), 0
+      ) || 0;
+      const stepProtocolFee = step.estimate?.feeCosts?.reduce(
+        (sum: number, fc: any) => sum + Number(fc.amountUSD || 0), 0
+      ) || 0;
+
+      totalGasCostUsd += stepGasCost;
+      totalProtocolFeeUsd += stepProtocolFee;
+      totalDurationSeconds += step.estimate?.executionDuration || 0;
+
+      return {
+        stepIndex: stepIndex + 1,
+        type: step.type === 'cross' || step.type === 'lifi' ? 'bridge' : step.type,
+        action: `${step.type === 'cross' ? 'Bridge' : 'Swap'} ${step.action?.fromToken?.symbol} to ${step.action?.toToken?.symbol} via ${step.toolDetails?.name}`,
+        tool: step.tool,
+        toolName: step.toolDetails?.name || step.tool,
+        fromChainName: getChainName(step.action?.fromChainId),
+        toChainName: getChainName(step.action?.toChainId),
+        fromTokenSymbol: step.action?.fromToken?.symbol,
+        toTokenSymbol: step.action?.toToken?.symbol,
+        estimatedDurationSeconds: step.estimate?.executionDuration || 0,
+        fees: {
+          gasCostUsd: stepGasCost.toFixed(2),
+          protocolFeeUsd: stepProtocolFee.toFixed(2),
+        },
+      };
+    });
+
+    // Format amounts
+    const fromDecimals = route.fromToken?.decimals || 18;
+    const toDecimals = route.toToken?.decimals || 6;
+    const fromAmountFormatted = formatAmount(route.fromAmount, fromDecimals);
+    const toAmountFormatted = formatAmount(route.toAmount, toDecimals);
+
+    // Calculate USD values
+    const fromPriceUsd = parseFloat(route.fromToken?.priceUSD || '1');
+    const toPriceUsd = parseFloat(route.toToken?.priceUSD || '1');
+    const fromAmountUsd = (parseFloat(fromAmountFormatted) * fromPriceUsd).toFixed(2);
+    const toAmountUsd = (parseFloat(toAmountFormatted) * toPriceUsd).toFixed(2);
+
+    // Calculate exchange rate
+    const fromAmountNum = parseFloat(fromAmountFormatted);
+    const toAmountNum = parseFloat(toAmountFormatted);
+    const exchangeRate = fromAmountNum > 0 ? (toAmountNum / fromAmountNum).toFixed(6) : '1.000000';
+
+    return {
+      routeId: route.id,
+      fromChainId: route.fromChainId,
+      toChainId: route.toChainId,
+      fromToken: route.fromToken?.address,
+      fromTokenInfo: route.fromToken,
+      toToken: route.toToken?.address,
+      toTokenInfo: route.toToken,
+      fromAmount: route.fromAmount,
+      fromAmountFormatted,
+      fromAmountUsd,
+      toAmount: route.toAmount,
+      toAmountFormatted,
+      toAmountUsd,
+      toAmountMin: route.toAmountMin,
+      exchangeRate,
+      estimatedDurationSeconds: totalDurationSeconds,
+      estimatedDurationFormatted: formatDuration(totalDurationSeconds),
+      fees: {
+        gasCostUsd: totalGasCostUsd.toFixed(2),
+        protocolFeeUsd: totalProtocolFeeUsd.toFixed(2),
+        totalFeeUsd: (totalGasCostUsd + totalProtocolFeeUsd).toFixed(2),
+      },
+      steps: mappedSteps,
+      tags: route.tags || [],
+      // Pass through raw data for frontend SDK execution
+      raw: route,
+    };
+  });
 
   return {
     recommended: routes[0],

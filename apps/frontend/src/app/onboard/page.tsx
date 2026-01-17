@@ -106,6 +106,7 @@ interface QuoteResponse {
   recommended: {
     routeId: string;
     fromAmountFormatted: string;
+    fromAmountUsd: string;
     toAmountFormatted: string;
     toAmountUsd: string;
     estimatedDurationSeconds: number;
@@ -316,9 +317,11 @@ export default function OnboardPage() {
     return () => clearTimeout(timeoutId);
   }, [walletAddress, checkSaltWallet]);
 
-  // Fetch token balances when chain or wallet changes
+  // Fetch token balances directly from chain using viem
   const fetchTokenBalances = useCallback(async () => {
-    if (!walletAddress || !fromChain) {
+    console.log(`[Balances] fetchTokenBalances called. walletAddress: ${walletAddress}, fromChain: ${fromChain}, options.length: ${options.length}`);
+    if (!walletAddress || !fromChain || options.length === 0) {
+      console.log('[Balances] Early return - missing data');
       setTokenBalances({});
       return;
     }
@@ -326,40 +329,114 @@ export default function OnboardPage() {
     const chainId = parseInt(fromChain);
     const chain = options.find(o => o.chainId === chainId);
     if (!chain || chain.tokens.length === 0) {
+      console.log('[Balances] No chain found or no tokens for chain', chainId);
       setTokenBalances({});
       return;
     }
 
     setBalancesLoading(true);
+    console.log(`[Balances] ========================================`);
+    console.log(`[Balances] Fetching balances for connected wallet: ${walletAddress}`);
+    console.log(`[Balances] Chain: ${chain.chainName} (${chainId}), Tokens: ${chain.tokens.length}`);
+    console.log(`[Balances] Token list:`, chain.tokens.map(t => `${t.symbol}: ${t.address}`));
+
     try {
-      // Use LI.FI SDK to get token balances
-      const sdk = await getLifiSdk();
-      const tokens = chain.tokens.map(t => ({
-        address: t.address as `0x${string}`,
-        chainId,
-        symbol: t.symbol,
-        decimals: t.decimals,
-        name: t.symbol,
-        priceUSD: '0',
-      }));
+      // Use direct RPC calls via viem to fetch balances from user's wallet
+      const { createPublicClient, http } = await import('viem');
+      const { mainnet, arbitrum, optimism, polygon, base, bsc, avalanche } = await import('viem/chains');
 
-      const balances = await sdk.getTokenBalances(walletAddress as `0x${string}`, tokens);
+      // Map chain IDs to viem chains
+      const chainMap: Record<number, any> = {
+        1: mainnet,
+        42161: arbitrum,
+        10: optimism,
+        137: polygon,
+        8453: base,
+        56: bsc,
+        43114: avalanche,
+      };
 
-      const balanceMap: Record<string, string> = {};
-      balances.forEach(token => {
-        if (token.amount && BigInt(token.amount) > 0n) {
-          const formatted = formatUnits(BigInt(token.amount), token.decimals);
-          // Format to reasonable decimal places
-          const num = parseFloat(formatted);
-          balanceMap[token.address.toLowerCase()] = num < 0.01 ? num.toFixed(6) : num.toFixed(4);
-        } else {
-          balanceMap[token.address.toLowerCase()] = '0';
-        }
+      const viemChain = chainMap[chainId];
+      if (!viemChain) {
+        console.log('[Balances] Chain not supported for direct balance fetch, trying LI.FI SDK');
+        // Fallback to LI.FI SDK for unsupported chains
+        const sdk = await getLifiSdk();
+        const tokens = chain.tokens.map(t => ({
+          address: t.address as `0x${string}`,
+          chainId,
+          symbol: t.symbol,
+          decimals: t.decimals,
+          name: t.symbol,
+          priceUSD: '0',
+        }));
+        const balances = await sdk.getTokenBalances(walletAddress as `0x${string}`, tokens);
+        const balanceMap: Record<string, string> = {};
+        balances.forEach(token => {
+          const addressKey = token.address.toLowerCase();
+          if (token.amount && BigInt(token.amount) > 0n) {
+            const formatted = formatUnits(BigInt(token.amount), token.decimals);
+            const num = parseFloat(formatted);
+            balanceMap[addressKey] = num < 0.01 ? num.toFixed(6) : num.toFixed(4);
+          } else {
+            balanceMap[addressKey] = '0';
+          }
+        });
+        setTokenBalances(balanceMap);
+        return;
+      }
+
+      const publicClient = createPublicClient({
+        chain: viemChain,
+        transport: http(),
       });
 
+      const balanceMap: Record<string, string> = {};
+      const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+      // Fetch balances for each token
+      for (const token of chain.tokens) {
+        try {
+          const addressKey = token.address.toLowerCase();
+
+          if (token.address === NATIVE_TOKEN_ADDRESS || token.address.toLowerCase() === NATIVE_TOKEN_ADDRESS) {
+            // Native token (ETH, MATIC, etc.) - use getBalance
+            const balance = await publicClient.getBalance({ address: walletAddress as `0x${string}` });
+            if (balance > 0n) {
+              const formatted = formatUnits(balance, token.decimals);
+              const num = parseFloat(formatted);
+              balanceMap[addressKey] = num < 0.01 ? num.toFixed(6) : num.toFixed(4);
+              console.log(`[Balances] ✓ ${token.symbol} (native): ${balanceMap[addressKey]}`);
+            } else {
+              balanceMap[addressKey] = '0';
+            }
+          } else {
+            // ERC20 token - use balanceOf
+            const balance = await publicClient.readContract({
+              address: token.address as `0x${string}`,
+              abi: ERC20_PERMIT_ABI,
+              functionName: 'balanceOf',
+              args: [walletAddress as `0x${string}`],
+            }) as bigint;
+
+            if (balance > 0n) {
+              const formatted = formatUnits(balance, token.decimals);
+              const num = parseFloat(formatted);
+              balanceMap[addressKey] = num < 0.01 ? num.toFixed(6) : num.toFixed(4);
+              console.log(`[Balances] ✓ ${token.symbol} (${addressKey}): ${balanceMap[addressKey]}`);
+            } else {
+              balanceMap[addressKey] = '0';
+            }
+          }
+        } catch (tokenErr) {
+          console.error(`[Balances] Failed to fetch ${token.symbol}:`, tokenErr);
+          balanceMap[token.address.toLowerCase()] = '0';
+        }
+      }
+
+      console.log('[Balances] Final balance map:', balanceMap);
       setTokenBalances(balanceMap);
     } catch (err) {
-      console.error('Failed to fetch token balances:', err);
+      console.error('[Balances] Failed to fetch token balances:', err);
       setTokenBalances({});
     } finally {
       setBalancesLoading(false);
@@ -377,6 +454,17 @@ export default function OnboardPage() {
   const selectedTokenBalance = selectedToken
     ? tokenBalances[selectedToken.address.toLowerCase()] || '0'
     : '0';
+
+  // Debug logging for balance lookup
+  useEffect(() => {
+    if (selectedToken) {
+      console.log(`[Balance Debug] Selected token: ${selectedToken.symbol} (${selectedToken.address})`);
+      console.log(`[Balance Debug] Lookup key: ${selectedToken.address.toLowerCase()}`);
+      console.log(`[Balance Debug] Token balances keys:`, Object.keys(tokenBalances));
+      console.log(`[Balance Debug] Found balance: ${tokenBalances[selectedToken.address.toLowerCase()]}`);
+      console.log(`[Balance Debug] Displayed balance: ${selectedTokenBalance}`);
+    }
+  }, [selectedToken, tokenBalances, selectedTokenBalance]);
 
   // Parse amount to smallest unit
   const parseAmount = (value: string, decimals: number): string => {
@@ -413,9 +501,6 @@ export default function OnboardPage() {
     }
     throw lastError;
   };
-
-  // Minimum deposit for Hyperliquid Bridge2 (5 USDC)
-  const MIN_DEPOSIT_USDC = 5n * 1000000n; // 5 USDC in 6 decimals
 
   // ERC20 transfer ABI
   const ERC20_TRANSFER_ABI = [
@@ -461,9 +546,10 @@ export default function OnboardPage() {
       throw new Error('Invalid deposit amount');
     }
 
-    // Check minimum deposit (5 USDC)
-    if (depositAmount < MIN_DEPOSIT_USDC) {
-      throw new Error(`Minimum deposit is 5 USDC. You're trying to deposit ${depositAmountFormatted} USDC.`);
+    // Hyperliquid minimum deposit is 5 USDC - amounts below this are LOST FOREVER
+    const MIN_DEPOSIT = 5000000n; // 5 USDC in 6 decimals
+    if (depositAmount < MIN_DEPOSIT) {
+      throw new Error(`Hyperliquid requires minimum 5 USDC deposit. You're trying to deposit ${depositAmountFormatted} USDC. Amounts below 5 USDC are lost forever!`);
     }
 
     log(`Deposit amount: ${depositAmountFormatted} USDC`, 'info');
@@ -517,6 +603,13 @@ export default function OnboardPage() {
 
   const handleGetQuote = async () => {
     if (!walletAddress || !fromChain || !fromToken || !amount || !selectedToken) {
+      return;
+    }
+
+    // Validate amount is a positive number
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      setError({ message: 'Please enter a valid positive amount' });
       return;
     }
 
@@ -1112,11 +1205,11 @@ export default function OnboardPage() {
           />
         )}
 
-        {/* Selected token balance display */}
+        {/* Selected token balance display - shows user's wallet balance */}
         {selectedToken && (
           <div className="flex items-center justify-between text-xs">
             <span className="text-white/40">
-              Available: {balancesLoading ? 'Loading...' : `${selectedTokenBalance} ${selectedToken.symbol}`}
+              Your Balance: {balancesLoading ? 'Loading...' : `${selectedTokenBalance} ${selectedToken.symbol}`}
             </span>
             {parseFloat(selectedTokenBalance) > 0 && (
               <button
@@ -1136,12 +1229,21 @@ export default function OnboardPage() {
           label="Amount"
           value={amount}
           onChange={(val) => {
-            setAmount(val);
+            // Only allow positive numbers
+            const cleaned = val.replace(/[^0-9.]/g, '');
+            // Prevent multiple decimal points
+            const parts = cleaned.split('.');
+            const sanitized = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleaned;
+            setAmount(sanitized);
             if (quote) resetFlow();
           }}
           token={selectedToken ? { symbol: selectedToken.symbol } : undefined}
           disabled={flowStatus !== 'idle'}
         />
+        {/* Show USD value for non-stablecoin inputs */}
+        {quote?.recommended?.fromAmountUsd && selectedToken?.symbol !== 'USDC' && selectedToken?.symbol !== 'USDT' && (
+          <p className="text-xs text-white/40 -mt-2 ml-1">~${quote.recommended.fromAmountUsd} USD</p>
+        )}
 
         <SwapDivider />
 
@@ -1152,10 +1254,23 @@ export default function OnboardPage() {
             <Badge variant="yellow">Perp Account</Badge>
           </div>
           <div className="mt-2 text-2xl font-light text-white">
-            {quote?.recommended?.toAmountFormatted || amount || '0.0'} USDC
+            {quote?.recommended?.toAmountFormatted
+              ? `${quote.recommended.toAmountFormatted} USDC`
+              : quoting
+                ? 'Getting quote...'
+                : amount
+                  ? 'Click Get Quote to see conversion'
+                  : '0.0 USDC'
+            }
           </div>
           {quote?.recommended?.toAmountUsd && (
             <p className="text-xs text-white/40 mt-1">~${quote.recommended.toAmountUsd}</p>
+          )}
+          {/* Warning for amounts below 5 USDC minimum */}
+          {quote?.recommended?.toAmountFormatted && parseFloat(quote.recommended.toAmountFormatted) < 5 && (
+            <p className="text-xs text-red-400 mt-2 font-medium">
+              ⚠️ Hyperliquid requires minimum 5 USDC. Amounts below 5 USDC are lost forever!
+            </p>
           )}
         </div>
 

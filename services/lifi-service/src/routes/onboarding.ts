@@ -166,8 +166,15 @@ export async function onboardingRoutes(app: FastifyInstance) {
     }
 
     // Get routes from LI.FI with preference
-    // Use provided toChainId or default to HyperEVM for backward compatibility
-    const destinationChainId = toChainId || hyperliquidConfig.hyperEvmChainId;
+    // Always bridge to Arbitrum (42161) since Hyperliquid Bridge2 is on Arbitrum
+    // The frontend then deposits to Hyperliquid via the Bridge2 contract
+    const ARBITRUM_CHAIN_ID = 42161;
+    const destinationChainId = toChainId || ARBITRUM_CHAIN_ID;
+
+    app.log.info(`[Quote Debug] Received toChainId from request: ${toChainId}`);
+    app.log.info(`[Quote Debug] Using destinationChainId: ${destinationChainId}`);
+    app.log.info(`[Quote Debug] toTokenAddress: ${toTokenAddress}`);
+
     let routeAlternatives: RouteAlternatives;
     try {
       routeAlternatives = await getRoutes({
