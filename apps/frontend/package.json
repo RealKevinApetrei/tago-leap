@@ -23,6 +23,7 @@
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "recharts": "^3.6.0",
+    "twitter-api-v2": "^1.29.0",
     "viem": "^2.x",
     "wagmi": "^2.x"
   },

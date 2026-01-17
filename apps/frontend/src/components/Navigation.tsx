@@ -2,54 +2,11 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { usePathname, useSearchParams } from 'next/navigation';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useState } from 'react';
-
-const navItems = [
-  { label: 'Onboard', href: '/onboard', tab: null, icon: (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-    </svg>
-  )},
-  { label: 'Narrative', href: '/robo?tab=trade', tab: 'trade', icon: (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5" />
-    </svg>
-  )},
-  { label: 'Portfolio', href: '/robo?tab=portfolio', tab: 'portfolio', icon: (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12m18 0v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 9m18 0V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v3" />
-    </svg>
-  )},
-  { label: 'Risk', href: '/robo?tab=risk', tab: 'risk', icon: (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-    </svg>
-  )},
-  { label: 'History', href: '/robo?tab=history', tab: 'history', icon: (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-  )},
-];
+import { useDepositModal } from '@/components/DepositModal';
 
 export function Navigation() {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const currentTab = searchParams.get('tab');
-  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
-
-  const isActive = (item: typeof navItems[0]) => {
-    if (item.href === '/onboard') {
-      return pathname === '/onboard';
-    }
-    if (pathname === '/robo') {
-      const activeTab = currentTab || 'trade';
-      return item.tab === activeTab;
-    }
-    return false;
-  };
+  const { openDeposit } = useDepositModal();
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-md border-b border-white/[0.05]">
@@ -73,48 +30,6 @@ export function Navigation() {
               </span>
             </div>
           </Link>
-
-          {/* Center Navigation */}
-          <div className="flex items-center">
-            {navItems.map((item) => {
-              const active = isActive(item);
-              const hovered = hoveredItem === item.label;
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onMouseEnter={() => setHoveredItem(item.label)}
-                  onMouseLeave={() => setHoveredItem(null)}
-                  className="relative px-4 py-2 group"
-                >
-                  <span className={`
-                    relative z-10 flex items-center gap-2 text-sm font-light tracking-wide transition-colors duration-200
-                    ${active ? 'text-white' : 'text-white/50 group-hover:text-white/80'}
-                  `}>
-                    <span className={`transition-colors duration-200 ${active ? 'text-yellow-400' : 'text-white/30 group-hover:text-white/50'}`}>
-                      {item.icon}
-                    </span>
-                    {item.label}
-                  </span>
-
-                  {/* Active indicator - subtle underline */}
-                  <span className={`
-                    absolute bottom-0 left-4 right-4 h-px bg-gradient-to-r from-yellow-400 to-yellow-500
-                    transition-all duration-300 ease-out
-                    ${active ? 'opacity-100 scale-x-100' : 'opacity-0 scale-x-0'}
-                  `} />
-
-                  {/* Hover background */}
-                  <span className={`
-                    absolute inset-0 rounded-lg bg-white/[0.03]
-                    transition-opacity duration-200
-                    ${hovered && !active ? 'opacity-100' : 'opacity-0'}
-                  `} />
-                </Link>
-              );
-            })}
-          </div>
 
           {/* Wallet */}
           <ConnectButton.Custom>
@@ -179,6 +94,25 @@ export function Navigation() {
 
                     return (
                       <div className="flex items-center gap-1">
+                        {/* Deposit button */}
+                        <button
+                          onClick={openDeposit}
+                          className="
+                            flex items-center gap-2 px-4 py-2.5 rounded-xl
+                            bg-gradient-to-r from-yellow-400 to-yellow-500
+                            hover:from-yellow-300 hover:to-yellow-400
+                            text-black text-sm font-medium
+                            shadow-lg shadow-yellow-500/20 hover:shadow-yellow-500/30
+                            transition-all duration-200
+                            active:scale-95
+                          "
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                          </svg>
+                          <span>Deposit</span>
+                        </button>
+
                         {/* Chain selector */}
                         <button
                           onClick={openChainModal}

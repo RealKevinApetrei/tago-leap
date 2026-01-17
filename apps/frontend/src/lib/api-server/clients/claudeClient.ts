@@ -147,3 +147,118 @@ export function validateSuggestionAssets(
     invalidAssets,
   };
 }
+
+// Tweet categorization types
+export type TweetCategory = 'ai' | 'meme' | 'defi' | 'l1' | 'gaming' | 'infrastructure' | 'other';
+export type TweetSentiment = 'bullish' | 'bearish' | 'neutral';
+
+export interface TweetCategorization {
+  category: TweetCategory;
+  mentionedAssets: string[];
+  sentiment: TweetSentiment;
+  confidence: number;
+}
+
+const TWEET_CATEGORIZATION_PROMPT = `You are a JSON API that analyzes cryptocurrency tweets. Output ONLY valid JSON.
+
+Analyze the tweet and return:
+1. category: One of 'ai', 'meme', 'defi', 'l1', 'gaming', 'infrastructure', 'other'
+2. mentionedAssets: Array of crypto ticker symbols mentioned (e.g., ["BTC", "ETH"])
+3. sentiment: 'bullish', 'bearish', or 'neutral'
+4. confidence: 0.0 to 1.0 indicating confidence in categorization
+
+Categories:
+- ai: AI tokens, agents (TAO, RENDER, FET, VIRTUAL, AIXBT)
+- meme: Meme coins (DOGE, PEPE, BONK, WIF, SHIB)
+- defi: DeFi protocols (LINK, UNI, AAVE, CRV, GMX)
+- l1: Layer 1 blockchains (BTC, ETH, SOL, AVAX, SUI)
+- gaming: Gaming/metaverse (AXS, SAND, MANA, GALA)
+- infrastructure: L2s, infra (ARB, OP, MATIC, STRK)
+- other: Everything else
+
+Output format: {"category":"l1","mentionedAssets":["BTC","ETH"],"sentiment":"bullish","confidence":0.85}`;
+
+/**
+ * Categorize a tweet using Claude AI
+ */
+export async function categorizeTweet(
+  tweetContent: string,
+  authorUsername: string
+): Promise<TweetCategorization> {
+  try {
+    const client = getClient();
+
+    const response = await client.messages.create({
+      model: 'claude-haiku-3-20240307', // Use Haiku for speed/cost
+      max_tokens: 256,
+      system: TWEET_CATEGORIZATION_PROMPT,
+      messages: [{
+        role: 'user',
+        content: `Tweet by @${authorUsername}: "${tweetContent}"`,
+      }],
+    });
+
+    const textContent = response.content.find(block => block.type === 'text');
+    if (!textContent || textContent.type !== 'text') {
+      throw new Error('No text response from Claude');
+    }
+
+    let jsonText = textContent.text.trim();
+
+    // Clean up potential markdown
+    if (jsonText.startsWith('```json')) {
+      jsonText = jsonText.slice(7);
+    } else if (jsonText.startsWith('```')) {
+      jsonText = jsonText.slice(3);
+    }
+    if (jsonText.endsWith('```')) {
+      jsonText = jsonText.slice(0, -3);
+    }
+    jsonText = jsonText.trim();
+
+    const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      jsonText = jsonMatch[0];
+    }
+
+    const result = JSON.parse(jsonText) as TweetCategorization;
+
+    // Validate and normalize
+    const validCategories = ['ai', 'meme', 'defi', 'l1', 'gaming', 'infrastructure', 'other'];
+    if (!validCategories.includes(result.category)) {
+      result.category = 'other';
+    }
+
+    const validSentiments = ['bullish', 'bearish', 'neutral'];
+    if (!validSentiments.includes(result.sentiment)) {
+      result.sentiment = 'neutral';
+    }
+
+    return result;
+  } catch (error) {
+    console.error('[claudeClient] Error categorizing tweet:', error);
+
+    // Return fallback categorization
+    return {
+      category: 'other',
+      mentionedAssets: extractAssetsFromText(tweetContent),
+      sentiment: 'neutral',
+      confidence: 0.3,
+    };
+  }
+}
+
+// Helper: Extract crypto assets from text (fallback)
+function extractAssetsFromText(text: string): string[] {
+  const assets: string[] = [];
+
+  // Match $TICKER patterns
+  const tickerMatches = text.match(/\$([A-Z]{2,10})\b/gi);
+  if (tickerMatches) {
+    for (const match of tickerMatches) {
+      assets.push(match.slice(1).toUpperCase());
+    }
+  }
+
+  return [...new Set(assets)];
+}

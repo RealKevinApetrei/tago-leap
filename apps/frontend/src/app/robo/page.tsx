@@ -1,14 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { useAccount } from 'wagmi';
 import { ConnectButton, useConnectModal } from '@rainbow-me/rainbowkit';
 import { SwapPanel } from '@/components/ui/SwapPanel';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
-import { Card } from '@/components/ui/Card';
 import { pearApi, saltApi, NarrativeSuggestion } from '@/lib/api';
 import { usePearAuth } from '@/hooks/usePearAuth';
 import { useSaltAccount } from '@/hooks/useSaltAccount';
@@ -21,14 +19,13 @@ import { useHyperliquidBalance } from '@/hooks/useHyperliquidBalance';
 import { RiskManagementTab } from '@/components/RiskManagementTab';
 import { useOneClickSetup, SetupStep } from '@/hooks/useOneClickSetup';
 import { usePolicyValidation } from '@/hooks/usePolicyValidation';
+import { useDepositModal } from '@/components/DepositModal';
+import { SidePanelsProvider, PanelType } from '@/components/SidePanels';
 
-type TabType = 'trade' | 'portfolio' | 'risk';
 type PortfolioView = 'positions' | 'history';
 // Trade mode is now auto-detected: pair (1v1) or basket (multiple assets per side)
 
 export default function RoboPage() {
-  const searchParams = useSearchParams();
-  const urlTab = searchParams.get('tab') as TabType | null;
   const { isConnected, address } = useAccount();
   const { openConnectModal } = useConnectModal();
   const {
@@ -106,6 +103,9 @@ export default function RoboPage() {
     reset: resetSetup,
   } = useOneClickSetup();
 
+  // Deposit modal
+  const { openDeposit } = useDepositModal();
+
   // Policy validation for risk tracking
   const {
     policy: policyLimits,
@@ -113,16 +113,11 @@ export default function RoboPage() {
     remainingNotional,
   } = usePolicyValidation(account?.id || null);
 
-  // Tab state - sync with URL
-  const [activeTab, setActiveTab] = useState<TabType>(urlTab || 'trade');
+  // Portfolio view state (for sub-tabs within portfolio panel)
   const [portfolioView, setPortfolioView] = useState<PortfolioView>('positions');
 
-  // Sync tab with URL changes
-  useEffect(() => {
-    if (urlTab && urlTab !== activeTab) {
-      setActiveTab(urlTab);
-    }
-  }, [urlTab, activeTab]);
+  // Side panel state
+  const [activePanel, setActivePanel] = useState<PanelType>(null);
 
   // AI Trade Builder state
   const [prompt, setPrompt] = useState('');
@@ -349,8 +344,8 @@ export default function RoboPage() {
         setIsRefreshingAfterTrade(false);
       }
 
-      // Redirect to portfolio tab to show the new position
-      setActiveTab('portfolio');
+      // Open portfolio panel to show the new position
+      setActivePanel('portfolio');
     } catch (err: any) {
       console.error('Failed to execute trade:', err);
       const errorMessage = err.tradeError?.message || err.message || 'Failed to execute trade';
@@ -462,48 +457,104 @@ export default function RoboPage() {
     </Button>
   );
 
+  // Portfolio content for side panel (not connected state)
+  const notConnectedPortfolioContent = (
+    <div className="relative">
+      <div className="blur-sm pointer-events-none">
+        <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08] mb-4">
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-white/60">Total Value</span>
+            <span className="text-lg font-medium text-white">$0.00</span>
+          </div>
+        </div>
+        <div className="text-center py-8 text-white/40">
+          <p className="text-sm">No open positions</p>
+        </div>
+      </div>
+      <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[2px] rounded-xl">
+        <div className="text-center">
+          <p className="text-sm text-white/60 mb-3">Connect wallet to view portfolio</p>
+          <Button variant="yellow" onClick={openConnectModal}>
+            Connect Wallet
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Risk content for side panel (not connected state)
+  const notConnectedRiskContent = (
+    <div className="relative">
+      <div className="blur-sm pointer-events-none">
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08]">
+            <span className="text-xs text-white/40">Max Leverage</span>
+            <p className="text-lg font-medium text-white">5x</p>
+          </div>
+          <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08]">
+            <span className="text-xs text-white/40">Max Drawdown</span>
+            <p className="text-lg font-medium text-white">10%</p>
+          </div>
+        </div>
+      </div>
+      <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[2px] rounded-xl">
+        <div className="text-center">
+          <p className="text-sm text-white/60 mb-3">Connect wallet to manage risk settings</p>
+          <Button variant="yellow" onClick={openConnectModal}>
+            Connect Wallet
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+
   // If not connected, show main UI with connect wallet prompts
   if (!isConnected) {
     return (
-      <div className="space-y-6">
-        {/* Toast Notification */}
-        {toast && (
-          <div className="fixed right-4 top-1/2 -translate-y-1/2 z-50 max-w-md animate-in slide-in-from-right fade-in duration-300">
-            <div className={`relative backdrop-blur-sm border rounded-xl p-4 shadow-2xl ${
-              toast.type === 'error'
-                ? 'bg-red-500/95 border-red-400/50 shadow-red-500/20'
-                : 'bg-green-500/95 border-green-400/50 shadow-green-500/20'
-            }`}>
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                  {toast.type === 'error' ? (
-                    <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+      <SidePanelsProvider
+        portfolioContent={notConnectedPortfolioContent}
+        riskContent={notConnectedRiskContent}
+        activePanel={activePanel}
+        onPanelChange={setActivePanel}
+      >
+        <div className="space-y-6">
+          {/* Toast Notification */}
+          {toast && (
+            <div className="fixed right-4 top-1/2 -translate-y-1/2 z-50 max-w-md animate-in slide-in-from-right fade-in duration-300">
+              <div className={`relative backdrop-blur-sm border rounded-xl p-4 shadow-2xl ${
+                toast.type === 'error'
+                  ? 'bg-red-500/95 border-red-400/50 shadow-red-500/20'
+                  : 'bg-green-500/95 border-green-400/50 shadow-green-500/20'
+              }`}>
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                    {toast.type === 'error' ? (
+                      <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white mb-1">
+                      {toast.type === 'error' ? 'Error' : 'Success'}
+                    </p>
+                    <p className="text-sm text-white/90 font-light leading-relaxed">{toast.message}</p>
+                  </div>
+                  <button onClick={() => setToast(null)} className="flex-shrink-0 text-white/70 hover:text-white">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
-                  ) : (
-                    <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
+                  </button>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-white mb-1">
-                    {toast.type === 'error' ? 'Error' : 'Success'}
-                  </p>
-                  <p className="text-sm text-white/90 font-light leading-relaxed">{toast.message}</p>
-                </div>
-                <button onClick={() => setToast(null)} className="flex-shrink-0 text-white/70 hover:text-white">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Narrative Trading Tab */}
-        {activeTab === 'trade' && (
+          {/* Narrative Trading - Always shown */}
           <SwapPanel title="Narrative Trading" subtitle="Describe your thesis, get a pair trade">
             <div className="space-y-2">
               <label className="block text-sm font-light text-white/70">Your Trading Idea</label>
@@ -524,64 +575,8 @@ export default function RoboPage() {
 
             <ConnectWalletPrompt />
           </SwapPanel>
-        )}
-
-        {/* Portfolio Tab - Blurred without connection */}
-        {activeTab === 'portfolio' && (
-          <SwapPanel title="Portfolio" subtitle="Your open positions">
-            <div className="relative">
-              <div className="blur-sm pointer-events-none">
-                <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08] mb-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-white/60">Total Value</span>
-                    <span className="text-lg font-medium text-white">$0.00</span>
-                  </div>
-                </div>
-                <div className="text-center py-8 text-white/40">
-                  <p className="text-sm">No open positions</p>
-                </div>
-              </div>
-              <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[2px] rounded-xl">
-                <div className="text-center">
-                  <p className="text-sm text-white/60 mb-3">Connect wallet to view portfolio</p>
-                  <Button variant="yellow" onClick={openConnectModal}>
-                    Connect Wallet
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </SwapPanel>
-        )}
-
-        {/* Risk Tab - Blurred without connection */}
-        {activeTab === 'risk' && (
-          <SwapPanel title="Risk Management" subtitle="Configure your trading limits">
-            <div className="relative">
-              <div className="blur-sm pointer-events-none">
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08]">
-                    <span className="text-xs text-white/40">Max Leverage</span>
-                    <p className="text-lg font-medium text-white">5x</p>
-                  </div>
-                  <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08]">
-                    <span className="text-xs text-white/40">Max Drawdown</span>
-                    <p className="text-lg font-medium text-white">10%</p>
-                  </div>
-                </div>
-              </div>
-              <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[2px] rounded-xl">
-                <div className="text-center">
-                  <p className="text-sm text-white/60 mb-3">Connect wallet to manage risk settings</p>
-                  <Button variant="yellow" onClick={openConnectModal}>
-                    Connect Wallet
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </SwapPanel>
-        )}
-
-      </div>
+        </div>
+      </SidePanelsProvider>
     );
   }
 
@@ -678,12 +673,12 @@ export default function RoboPage() {
                   {step.id === 'agentApproval' && step.status !== 'completed' && hlBalance !== null && hlBalance.availableBalance === 0 && (
                     <div className="mt-2 flex items-center gap-2">
                       <span className="text-xs text-yellow-400/70">Requires USDC deposit</span>
-                      <a
-                        href="/onboard"
+                      <button
+                        onClick={openDeposit}
                         className="text-xs text-tago-yellow-400 hover:underline"
                       >
-                        Bridge →
-                      </a>
+                        Deposit →
+                      </button>
                     </div>
                   )}
                 </div>
@@ -725,9 +720,277 @@ export default function RoboPage() {
     );
   }
 
+  // Portfolio content for side panel
+  const portfolioContent = (
+    <div className="w-full max-w-4xl mx-auto">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Left Column: Stats & Risk */}
+        <div className="space-y-4">
+          {/* Account Summary Card */}
+          <div className="bg-gradient-to-br from-white/[0.05] to-transparent border border-white/[0.08] rounded-xl p-4 space-y-3">
+            <h3 className="text-xs text-white/50 font-medium uppercase tracking-wide">Account</h3>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-white/40 font-light">Equity</span>
+              {balanceLoading ? (
+                <span className="text-sm text-white/40">Loading...</span>
+              ) : balanceError ? (
+                <span className="text-sm text-white/40">--</span>
+              ) : (
+                <span className="text-lg text-white font-medium">
+                  ${hlBalance?.equity?.toFixed(2) || '0.00'}
+                </span>
+              )}
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-white/40 font-light">Available</span>
+              <span className="text-sm text-emerald-400">
+                ${hlBalance?.availableBalance?.toFixed(2) || '0.00'}
+              </span>
+            </div>
+            <div className="flex justify-between items-center border-t border-white/[0.08] pt-3">
+              <span className="text-sm text-white/40 font-light">Unrealized P&L</span>
+              {(() => {
+                const pnlValue = hlBalance?.unrealizedPnl ?? totalPnl;
+                const equityBase = hlBalance?.equity ? hlBalance.equity - pnlValue : 0;
+                const pnlPercent = equityBase > 0 ? (pnlValue / equityBase) * 100 : totalPnlPercent;
+                return (
+                  <div className="flex items-center gap-2">
+                    <span className={`text-lg font-medium ${pnlValue >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {pnlValue >= 0 ? '+' : ''}${pnlValue.toFixed(2)}
+                    </span>
+                    <span className={`text-xs ${pnlValue >= 0 ? 'text-green-400/60' : 'text-red-400/60'}`}>
+                      ({pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(1)}%)
+                    </span>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+
+          {/* Risk Metrics Card */}
+          <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4 space-y-3">
+            <h3 className="text-xs text-white/50 font-medium uppercase tracking-wide">Risk Status</h3>
+            {policyLimits && (
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs">
+                  <span className="text-white/50">Daily Notional</span>
+                  <span className="text-white/70">
+                    ${todayNotional.toFixed(0)} / ${policyLimits.maxDailyNotionalUsd.toLocaleString()}
+                  </span>
+                </div>
+                <div className="h-2 bg-white/[0.08] rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      (todayNotional / policyLimits.maxDailyNotionalUsd) > 0.8
+                        ? 'bg-yellow-500'
+                        : (todayNotional / policyLimits.maxDailyNotionalUsd) > 0.9
+                        ? 'bg-red-500'
+                        : 'bg-emerald-500'
+                    }`}
+                    style={{ width: `${Math.min(100, (todayNotional / policyLimits.maxDailyNotionalUsd) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            {hlBalance?.accountHealth !== undefined && (
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs">
+                  <span className="text-white/50">Account Health</span>
+                  <span className={`font-medium ${
+                    hlBalance.accountHealth > 50 ? 'text-green-400' :
+                    hlBalance.accountHealth > 25 ? 'text-yellow-400' : 'text-red-400'
+                  }`}>
+                    {hlBalance.accountHealth.toFixed(0)}%
+                  </span>
+                </div>
+                <div className="h-2 bg-white/[0.08] rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      hlBalance.accountHealth > 50 ? 'bg-green-500' :
+                      hlBalance.accountHealth > 25 ? 'bg-yellow-500' : 'bg-red-500'
+                    }`}
+                    style={{ width: `${hlBalance.accountHealth}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            {policyLimits && (
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-white/[0.06]">
+                <div>
+                  <span className="text-xs text-white/40">Max Leverage</span>
+                  <p className="text-sm text-white font-medium">{policyLimits.maxLeverage}x</p>
+                </div>
+                <div>
+                  <span className="text-xs text-white/40">Max Drawdown</span>
+                  <p className="text-sm text-white font-medium">{policyLimits.maxDrawdownPct}%</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <Button variant="ghost" fullWidth size="sm" onClick={() => { refreshPositions(); refreshBalance(); }}>
+            Refresh Data
+          </Button>
+        </div>
+
+        {/* Right Column: Positions/History */}
+        <div className="space-y-3">
+          <div className="flex gap-1 bg-white/[0.03] rounded-lg p-1">
+            <button
+              onClick={() => setPortfolioView('positions')}
+              className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+                portfolioView === 'positions'
+                  ? 'bg-tago-yellow-400 text-black'
+                  : 'text-white/60 hover:text-white hover:bg-white/[0.05]'
+              }`}
+            >
+              Positions ({positions.length})
+            </button>
+            <button
+              onClick={() => setPortfolioView('history')}
+              className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+                portfolioView === 'history'
+                  ? 'bg-tago-yellow-400 text-black'
+                  : 'text-white/60 hover:text-white hover:bg-white/[0.05]'
+              }`}
+            >
+              History
+            </button>
+          </div>
+
+          {portfolioView === 'positions' && (
+            <div className="space-y-3">
+              {positionsError && (
+                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3">
+                  <p className="text-sm text-red-400">{positionsError}</p>
+                  <Button variant="ghost" size="sm" onClick={refreshPositions} className="mt-2">Retry</Button>
+                </div>
+              )}
+              {(positionsLoading || isRefreshingAfterTrade) ? (
+                <div className="text-center py-8 bg-white/[0.02] rounded-xl border border-white/[0.05]">
+                  <div className="inline-flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/20 border-t-tago-yellow-400" />
+                    <p className="text-white/40 font-light">{isRefreshingAfterTrade ? 'Updating...' : 'Loading...'}</p>
+                  </div>
+                </div>
+              ) : positions.length === 0 ? (
+                <div className="text-center py-12 bg-white/[0.02] rounded-xl border border-white/[0.05]">
+                  <svg className="w-12 h-12 mx-auto text-white/20 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                  </svg>
+                  <p className="text-white/40 font-light">No open positions</p>
+                  <p className="text-xs text-white/30 mt-1">Execute a trade to see it here</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                  {positions.map((position) => (
+                    <div key={position.id} className="bg-white/[0.03] border border-white/[0.08] rounded-xl p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Badge variant={position.pnl >= 0 ? 'success' : 'error'}>
+                            {position.pnl >= 0 ? '+' : ''}{position.pnlPercent.toFixed(1)}%
+                          </Badge>
+                          <span className="text-xs text-white/40">{position.leverage}x</span>
+                        </div>
+                        <span className={`text-sm font-medium ${position.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {position.pnl >= 0 ? '+' : ''}${position.pnl.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs">
+                        <div className="flex gap-1">
+                          {position.longAssets.map((asset) => (
+                            <span key={asset.asset} className="text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded">{asset.asset}</span>
+                          ))}
+                        </div>
+                        {position.shortAssets.length > 0 && (
+                          <>
+                            <span className="text-white/20">vs</span>
+                            <div className="flex gap-1">
+                              {position.shortAssets.map((asset) => (
+                                <span key={asset.asset} className="text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded">{asset.asset}</span>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      <div className="flex justify-between items-center text-xs text-white/40">
+                        <span>${position.usdValue.toFixed(2)}</span>
+                        <Button variant="ghost" size="sm" onClick={() => handleClosePosition(position.id)} loading={isClosing} className="!py-1 !px-2 text-xs">Close</Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {portfolioView === 'history' && (
+            <div className="space-y-2">
+              {accountLoading ? (
+                <div className="text-center py-8 bg-white/[0.02] rounded-xl border border-white/[0.05]">
+                  <p className="text-white/40 font-light">Loading history...</p>
+                </div>
+              ) : trades.length === 0 ? (
+                <div className="text-center py-12 bg-white/[0.02] rounded-xl border border-white/[0.05]">
+                  <svg className="w-12 h-12 mx-auto text-white/20 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-white/40 font-light">No trade history</p>
+                  <p className="text-xs text-white/30 mt-1">Your trades will appear here</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                  {trades.map((trade) => (
+                    <div key={trade.id} className="p-3 bg-white/[0.03] rounded-lg border border-white/[0.08] hover:border-white/[0.12] transition-colors">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="text-sm text-white font-light truncate">{trade.narrative_id || 'Direct Trade'}</p>
+                            {trade.source === 'salt' && (
+                              <span className="text-[10px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">Robo</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-white/40">{trade.direction} · ${trade.stake_usd} · {new Date(trade.created_at).toLocaleDateString()}</p>
+                        </div>
+                        <Badge variant={trade.status === 'completed' ? 'success' : trade.status === 'pending' ? 'info' : 'error'}>{trade.status}</Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Button variant="ghost" fullWidth size="sm" onClick={refreshTrades}>Refresh History</Button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Risk content for side panel
+  const riskContent = (
+    <RiskManagementTab
+      maxLeverage={maxLeverage}
+      setMaxLeverage={setMaxLeverage}
+      maxDailyNotional={maxDailyNotional}
+      setMaxDailyNotional={setMaxDailyNotional}
+      maxDrawdown={maxDrawdown}
+      setMaxDrawdown={setMaxDrawdown}
+      savingPolicy={savingPolicy}
+      onSavePolicy={handleSavePolicy}
+      showToast={showToast}
+      allowedTokens={allowedTokens}
+    />
+  );
+
   // Step 5: Main Dashboard
   return (
-    <div className="space-y-6">
+    <SidePanelsProvider
+      portfolioContent={portfolioContent}
+      riskContent={riskContent}
+      activePanel={activePanel}
+      onPanelChange={setActivePanel}
+    >
+      <div className="space-y-6">
       {/* Toast Notification - Fixed position on right side, stays until dismissed */}
       {toast && (
         <div className="fixed right-4 top-1/2 -translate-y-1/2 z-50 max-w-md animate-in slide-in-from-right fade-in duration-300">
@@ -781,9 +1044,8 @@ export default function RoboPage() {
         </div>
       )}
 
-      {/* Trade Tab - Narrative Trading */}
-      {activeTab === 'trade' && (
-        <SwapPanel title="Narrative Trading" subtitle="Describe your thesis, get a pair trade">
+      {/* Narrative Trading - Always shown */}
+      <SwapPanel title="Narrative Trading" subtitle="Describe your thesis, get a pair trade">
           {/* Prompt Input */}
           <div className="space-y-2">
             <label className="block text-sm font-light text-white/70">Your Trading Idea</label>
@@ -1053,12 +1315,12 @@ export default function RoboPage() {
                       <p className="text-xs text-red-400 mb-2">
                         Insufficient balance. Need ${((parseFloat(stakeUsd || '0') * leverage) - hlBalance.availableBalance).toFixed(2)} more.
                       </p>
-                      <a
-                        href="/onboard"
+                      <button
+                        onClick={openDeposit}
                         className="text-xs text-tago-yellow-400 hover:underline"
                       >
                         Deposit more USDC →
-                      </a>
+                      </button>
                     </div>
                   )}
 
@@ -1119,331 +1381,6 @@ export default function RoboPage() {
           )}
 
         </SwapPanel>
-      )}
-
-      {/* Portfolio Tab - Two Column Layout */}
-      {activeTab === 'portfolio' && (
-        <div className="w-full max-w-4xl mx-auto">
-          {/* Two Column Grid - Responsive */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Left Column: Stats & Risk */}
-            <div className="space-y-4">
-              {/* Account Summary Card */}
-              <div className="bg-gradient-to-br from-white/[0.05] to-transparent border border-white/[0.08] rounded-xl p-4 space-y-3">
-                <h3 className="text-xs text-white/50 font-medium uppercase tracking-wide">Account</h3>
-
-                {/* Account Equity */}
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-white/40 font-light">Equity</span>
-                  {balanceLoading ? (
-                    <span className="text-sm text-white/40">Loading...</span>
-                  ) : balanceError ? (
-                    <span className="text-sm text-white/40">--</span>
-                  ) : (
-                    <span className="text-lg text-white font-medium">
-                      ${hlBalance?.equity?.toFixed(2) || '0.00'}
-                    </span>
-                  )}
-                </div>
-
-                {/* Available Balance */}
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-white/40 font-light">Available</span>
-                  <span className="text-sm text-emerald-400">
-                    ${hlBalance?.availableBalance?.toFixed(2) || '0.00'}
-                  </span>
-                </div>
-
-                {/* Unrealized P&L */}
-                <div className="flex justify-between items-center border-t border-white/[0.08] pt-3">
-                  <span className="text-sm text-white/40 font-light">Unrealized P&L</span>
-                  {(() => {
-                    const pnlValue = hlBalance?.unrealizedPnl ?? totalPnl;
-                    const equityBase = hlBalance?.equity ? hlBalance.equity - pnlValue : 0;
-                    const pnlPercent = equityBase > 0 ? (pnlValue / equityBase) * 100 : totalPnlPercent;
-                    return (
-                      <div className="flex items-center gap-2">
-                        <span className={`text-lg font-medium ${pnlValue >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {pnlValue >= 0 ? '+' : ''}${pnlValue.toFixed(2)}
-                        </span>
-                        <span className={`text-xs ${pnlValue >= 0 ? 'text-green-400/60' : 'text-red-400/60'}`}>
-                          ({pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(1)}%)
-                        </span>
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              {/* Risk Metrics Card */}
-              <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4 space-y-3">
-                <h3 className="text-xs text-white/50 font-medium uppercase tracking-wide">Risk Status</h3>
-
-                {/* Drawdown Gauge */}
-                {policyLimits && (
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-white/50">Daily Notional</span>
-                      <span className="text-white/70">
-                        ${todayNotional.toFixed(0)} / ${policyLimits.maxDailyNotionalUsd.toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="h-2 bg-white/[0.08] rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          (todayNotional / policyLimits.maxDailyNotionalUsd) > 0.8
-                            ? 'bg-yellow-500'
-                            : (todayNotional / policyLimits.maxDailyNotionalUsd) > 0.9
-                            ? 'bg-red-500'
-                            : 'bg-emerald-500'
-                        }`}
-                        style={{ width: `${Math.min(100, (todayNotional / policyLimits.maxDailyNotionalUsd) * 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Account Health Bar */}
-                {hlBalance?.accountHealth !== undefined && (
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-white/50">Account Health</span>
-                      <span className={`font-medium ${
-                        hlBalance.accountHealth > 50 ? 'text-green-400' :
-                        hlBalance.accountHealth > 25 ? 'text-yellow-400' : 'text-red-400'
-                      }`}>
-                        {hlBalance.accountHealth.toFixed(0)}%
-                      </span>
-                    </div>
-                    <div className="h-2 bg-white/[0.08] rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          hlBalance.accountHealth > 50 ? 'bg-green-500' :
-                          hlBalance.accountHealth > 25 ? 'bg-yellow-500' : 'bg-red-500'
-                        }`}
-                        style={{ width: `${hlBalance.accountHealth}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Policy Limits */}
-                {policyLimits && (
-                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-white/[0.06]">
-                    <div>
-                      <span className="text-xs text-white/40">Max Leverage</span>
-                      <p className="text-sm text-white font-medium">{policyLimits.maxLeverage}x</p>
-                    </div>
-                    <div>
-                      <span className="text-xs text-white/40">Max Drawdown</span>
-                      <p className="text-sm text-white font-medium">{policyLimits.maxDrawdownPct}%</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Refresh Button */}
-              <Button variant="ghost" fullWidth size="sm" onClick={() => { refreshPositions(); refreshBalance(); }}>
-                Refresh Data
-              </Button>
-            </div>
-
-            {/* Right Column: Positions/History */}
-            <div className="space-y-3">
-              {/* Sub-tab Switcher */}
-              <div className="flex gap-1 bg-white/[0.03] rounded-lg p-1">
-                <button
-                  onClick={() => setPortfolioView('positions')}
-                  className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
-                    portfolioView === 'positions'
-                      ? 'bg-tago-yellow-400 text-black'
-                      : 'text-white/60 hover:text-white hover:bg-white/[0.05]'
-                  }`}
-                >
-                  Positions ({positions.length})
-                </button>
-                <button
-                  onClick={() => setPortfolioView('history')}
-                  className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
-                    portfolioView === 'history'
-                      ? 'bg-tago-yellow-400 text-black'
-                      : 'text-white/60 hover:text-white hover:bg-white/[0.05]'
-                  }`}
-                >
-                  History
-                </button>
-              </div>
-
-              {/* Positions View */}
-              {portfolioView === 'positions' && (
-                <div className="space-y-3">
-                  {/* Error State */}
-                  {positionsError && (
-                    <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3">
-                      <p className="text-sm text-red-400">{positionsError}</p>
-                      <Button variant="ghost" size="sm" onClick={refreshPositions} className="mt-2">
-                        Retry
-                      </Button>
-                    </div>
-                  )}
-
-                  {/* Loading State */}
-                  {(positionsLoading || isRefreshingAfterTrade) ? (
-                    <div className="text-center py-8 bg-white/[0.02] rounded-xl border border-white/[0.05]">
-                      <div className="inline-flex items-center gap-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/20 border-t-tago-yellow-400" />
-                        <p className="text-white/40 font-light">
-                          {isRefreshingAfterTrade ? 'Updating...' : 'Loading...'}
-                        </p>
-                      </div>
-                    </div>
-                  ) : positions.length === 0 ? (
-                    <div className="text-center py-12 bg-white/[0.02] rounded-xl border border-white/[0.05]">
-                      <svg className="w-12 h-12 mx-auto text-white/20 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                      </svg>
-                      <p className="text-white/40 font-light">No open positions</p>
-                      <p className="text-xs text-white/30 mt-1">Execute a trade to see it here</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
-                      {positions.map((position) => (
-                        <div
-                          key={position.id}
-                          className="bg-white/[0.03] border border-white/[0.08] rounded-xl p-3 space-y-2"
-                        >
-                          {/* Header */}
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Badge variant={position.pnl >= 0 ? 'success' : 'error'}>
-                                {position.pnl >= 0 ? '+' : ''}{position.pnlPercent.toFixed(1)}%
-                              </Badge>
-                              <span className="text-xs text-white/40">{position.leverage}x</span>
-                            </div>
-                            <span className={`text-sm font-medium ${position.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                              {position.pnl >= 0 ? '+' : ''}${position.pnl.toFixed(2)}
-                            </span>
-                          </div>
-
-                          {/* Assets Row */}
-                          <div className="flex items-center gap-2 text-xs">
-                            <div className="flex gap-1">
-                              {position.longAssets.map((asset) => (
-                                <span key={asset.asset} className="text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded">
-                                  {asset.asset}
-                                </span>
-                              ))}
-                            </div>
-                            {position.shortAssets.length > 0 && (
-                              <>
-                                <span className="text-white/20">vs</span>
-                                <div className="flex gap-1">
-                                  {position.shortAssets.map((asset) => (
-                                    <span key={asset.asset} className="text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded">
-                                      {asset.asset}
-                                    </span>
-                                  ))}
-                                </div>
-                              </>
-                            )}
-                          </div>
-
-                          {/* Details */}
-                          <div className="flex justify-between items-center text-xs text-white/40">
-                            <span>${position.usdValue.toFixed(2)}</span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleClosePosition(position.id)}
-                              loading={isClosing}
-                              className="!py-1 !px-2 text-xs"
-                            >
-                              Close
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* History View */}
-              {portfolioView === 'history' && (
-                <div className="space-y-2">
-                  {accountLoading ? (
-                    <div className="text-center py-8 bg-white/[0.02] rounded-xl border border-white/[0.05]">
-                      <p className="text-white/40 font-light">Loading history...</p>
-                    </div>
-                  ) : trades.length === 0 ? (
-                    <div className="text-center py-12 bg-white/[0.02] rounded-xl border border-white/[0.05]">
-                      <svg className="w-12 h-12 mx-auto text-white/20 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <p className="text-white/40 font-light">No trade history</p>
-                      <p className="text-xs text-white/30 mt-1">Your trades will appear here</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
-                      {trades.map((trade) => (
-                        <div
-                          key={trade.id}
-                          className="p-3 bg-white/[0.03] rounded-lg border border-white/[0.08] hover:border-white/[0.12] transition-colors"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <p className="text-sm text-white font-light truncate">
-                                  {trade.narrative_id || 'Direct Trade'}
-                                </p>
-                                {trade.source === 'salt' && (
-                                  <span className="text-[10px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">
-                                    Robo
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-xs text-white/40">
-                                {trade.direction} · ${trade.stake_usd} · {new Date(trade.created_at).toLocaleDateString()}
-                              </p>
-                            </div>
-                            <Badge
-                              variant={
-                                trade.status === 'completed' ? 'success' :
-                                trade.status === 'pending' ? 'info' : 'error'
-                              }
-                            >
-                              {trade.status}
-                            </Badge>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <Button variant="ghost" fullWidth size="sm" onClick={refreshTrades}>
-                    Refresh History
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Risk Management Tab */}
-      {activeTab === 'risk' && (
-        <RiskManagementTab
-          maxLeverage={maxLeverage}
-          setMaxLeverage={setMaxLeverage}
-          maxDailyNotional={maxDailyNotional}
-          setMaxDailyNotional={setMaxDailyNotional}
-          maxDrawdown={maxDrawdown}
-          setMaxDrawdown={setMaxDrawdown}
-          savingPolicy={savingPolicy}
-          onSavePolicy={handleSavePolicy}
-          showToast={showToast}
-          allowedTokens={allowedTokens}
-        />
-      )}
 
       {/* Advanced Details - Collapsible section at bottom */}
       <div className="mt-2">
@@ -1532,6 +1469,7 @@ export default function RoboPage() {
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </SidePanelsProvider>
   );
 }

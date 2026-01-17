@@ -21,6 +21,17 @@ export const serverEnv = {
   // Hyperliquid
   HYPERLIQUID_API_BASE_URL: process.env.HYPERLIQUID_API_BASE_URL || 'https://api.hyperliquid.xyz',
   HYPEREVM_CHAIN_ID: parseInt(process.env.HYPEREVM_CHAIN_ID || '999'),
+
+  // Twitter/X API
+  X_BEARER_TOKEN: process.env.X_BEARER_TOKEN || '',
+  X_API_KEY: process.env.X_API_KEY || '',
+  X_API_SECRET: process.env.X_API_SECRET || '',
+  X_CLIENT_ID: process.env.X_CLIENT_ID || '',
+  X_CLIENT_SECRET: process.env.X_CLIENT_SECRET || '',
+  X_CALLBACK_URL: process.env.X_CALLBACK_URL || '',
+
+  // Cron
+  CRON_SECRET: process.env.CRON_SECRET || '',
 };
 
 // Validate required env vars
