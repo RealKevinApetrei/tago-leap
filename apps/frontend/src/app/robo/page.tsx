@@ -52,6 +52,7 @@ export default function RoboPage() {
     isApproved: builderFeeApproved,
     isLoading: builderFeeLoading,
     isApproving: builderFeeApproving,
+    needsChainSwitch,
     error: builderFeeError,
     approveBuilderFee,
   } = useBuilderFee();
@@ -400,6 +401,14 @@ export default function RoboPage() {
             </div>
           </div>
 
+          {needsChainSwitch && (
+            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3">
+              <p className="text-sm text-yellow-400">
+                Please switch to <strong>Arbitrum</strong> network in your wallet to sign this approval.
+              </p>
+            </div>
+          )}
+
           {builderFeeError && (
             <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
               <p className="text-sm text-red-400">{builderFeeError}</p>
@@ -412,8 +421,9 @@ export default function RoboPage() {
             size="lg"
             onClick={approveBuilderFee}
             loading={builderFeeApproving}
+            disabled={needsChainSwitch}
           >
-            {builderFeeApproving ? 'Approving...' : 'Approve Builder Fee'}
+            {builderFeeApproving ? 'Approving...' : needsChainSwitch ? 'Switch to Arbitrum' : 'Approve Builder Fee'}
           </Button>
 
           <div className="text-center">

@@ -16,6 +16,7 @@ interface UseBuilderFeeReturn {
   isApproved: boolean;
   isLoading: boolean;
   isApproving: boolean;
+  needsChainSwitch: boolean;
   error: string | null;
   checkStatus: () => Promise<void>;
   approveBuilderFee: () => Promise<void>;
@@ -200,10 +201,14 @@ export function useBuilderFee(): UseBuilderFeeReturn {
     }
   }, [isConnected, address, checkStatus]);
 
+  // Check if user needs to switch to Arbitrum
+  const needsChainSwitch = !SUPPORTED_CHAIN_IDS.includes(chainId);
+
   return {
     isApproved,
     isLoading,
     isApproving,
+    needsChainSwitch,
     error,
     checkStatus,
     approveBuilderFee,

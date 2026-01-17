@@ -106,19 +106,23 @@ export function useAgentWallet(): UseAgentWalletReturn {
       return;
     }
 
+    // Use Arbitrum mainnet (42161) as default, fallback to connected chain if it's supported
+    const signingChainId = SUPPORTED_CHAIN_IDS.includes(chainId) ? chainId : 42161;
+    const signatureChainIdHex = `0x${signingChainId.toString(16)}`;
+
     setIsApproving(true);
     setError(null);
 
     try {
       const nonce = Date.now();
 
-      // EIP-712 domain for Hyperliquid - omit chainId to avoid wallet validation issues
-      // The signatureChainId in the action payload tells Hyperliquid how to verify
+      // EIP-712 domain for Hyperliquid - chainId must match signatureChainId
       const domain = {
         name: 'HyperliquidSignTransaction',
         version: '1',
+        chainId: signingChainId,
         verifyingContract: '0x0000000000000000000000000000000000000000' as `0x${string}`,
-      } as const;
+      };
 
       // EIP-712 types for approveAgent action
       const types = {
@@ -128,7 +132,7 @@ export function useAgentWallet(): UseAgentWalletReturn {
           { name: 'agentName', type: 'string' },
           { name: 'nonce', type: 'uint64' },
         ],
-      } as const;
+      };
 
       const message = {
         hyperliquidChain: 'Mainnet',
@@ -137,7 +141,12 @@ export function useAgentWallet(): UseAgentWalletReturn {
         nonce: BigInt(nonce),
       };
 
-      console.log('[useAgentWallet] Signing agent approval:', { agentAddress, nonce });
+      console.log('[useAgentWallet] Signing agent approval:', {
+        agentAddress,
+        nonce,
+        chainId: signingChainId,
+        signatureChainIdHex,
+      });
 
       // Sign the approval message using wallet client directly
       const signature = await walletClient.signTypedData({
@@ -158,7 +167,7 @@ export function useAgentWallet(): UseAgentWalletReturn {
           action: {
             type: 'approveAgent',
             hyperliquidChain: 'Mainnet',
-            signatureChainId: '0x66eee',
+            signatureChainId: signatureChainIdHex,
             agentAddress,
             agentName: 'Pear Protocol',
             nonce,
@@ -197,7 +206,7 @@ export function useAgentWallet(): UseAgentWalletReturn {
     } finally {
       setIsApproving(false);
     }
-  }, [address, walletClient, checkStatus]);
+  }, [address, walletClient, chainId, checkStatus]);
 
   // Check status on mount and when address changes
   useEffect(() => {
