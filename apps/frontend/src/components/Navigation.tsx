@@ -94,25 +94,6 @@ export function Navigation() {
 
                     return (
                       <div className="flex items-center gap-1">
-                        {/* Deposit button */}
-                        <button
-                          onClick={openDeposit}
-                          className="
-                            flex items-center gap-2 px-4 py-2.5 rounded-xl
-                            bg-gradient-to-r from-yellow-400 to-yellow-500
-                            hover:from-yellow-300 hover:to-yellow-400
-                            text-black text-sm font-medium
-                            shadow-lg shadow-yellow-500/20 hover:shadow-yellow-500/30
-                            transition-all duration-200
-                            active:scale-95
-                          "
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                          </svg>
-                          <span>Deposit</span>
-                        </button>
-
                         {/* Chain selector */}
                         <button
                           onClick={openChainModal}
@@ -155,6 +136,25 @@ export function Navigation() {
                           <span className="text-sm font-light text-white/70 group-hover:text-white/90 font-mono tracking-tight">
                             {account.displayName}
                           </span>
+                        </button>
+
+                        {/* Deposit button - rightmost */}
+                        <button
+                          onClick={openDeposit}
+                          className="
+                            flex items-center gap-2 px-4 py-2.5 rounded-xl
+                            bg-gradient-to-r from-yellow-400 to-yellow-500
+                            hover:from-yellow-300 hover:to-yellow-400
+                            text-black text-sm font-medium
+                            shadow-lg shadow-yellow-500/20 hover:shadow-yellow-500/30
+                            transition-all duration-200
+                            active:scale-95
+                          "
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                          </svg>
+                          <span>Deposit</span>
                         </button>
                       </div>
                     );

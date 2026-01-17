@@ -4,15 +4,15 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   SocialTradingLayout,
   ColumnHeader,
-  CategoryTabs,
 } from './SocialTradingLayout';
-import { TweetCard, type CryptoTweet, type TweetCategory } from './TweetCard';
+import { type CryptoTweet, type TweetCategory } from './TweetCard';
 import { TwitterFeedColumn } from './TwitterFeedColumn';
 import { CenterPanel } from './CenterPanel';
 import { TradeControlPanel } from './TradeControlPanel';
-import { XAccountConnectPrompt, XAccountConnectCompact } from './XAccountConnect';
-import { XListSelector } from './XListSelector';
+import { XListSelector, type CategoryFilter } from './XListSelector';
 import { useSocialTrade, SocialTradeProvider } from '@/contexts/SocialTradeContext';
+import { useUnifiedSetupContext } from '@/contexts/UnifiedSetupContext';
+import { ConnectToTradeModal } from '@/components/ConnectToTradeModal';
 import { saltApi, NarrativeSuggestion } from '@/lib/api';
 
 interface SocialTradingTabProps {
@@ -48,12 +48,18 @@ function SocialTradingContent({
     leverage,
     setStakeUsd,
     setLeverage,
+    updateAssetWeight,
+    removeAsset,
   } = useSocialTrade();
 
-  // X Account state
-  const [xAccount, setXAccount] = useState<{ id: string; username: string; avatar: string } | null>(null);
-  const [isConnectingX, setIsConnectingX] = useState(false);
-  const [xError, setXError] = useState<string | null>(null);
+  // Use unified setup context
+  const {
+    xAccount,
+    isXConnected,
+    isFullyReady,
+    isRunning: isRunningSetup,
+    openSetupModal,
+  } = useUnifiedSetupContext();
 
   // Twitter lists state
   const [xLists, setXLists] = useState<{ id: string; name: string; memberCount: number }[]>([]);
@@ -65,32 +71,12 @@ function SocialTradingContent({
   const [isLoadingTweets, setIsLoadingTweets] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
 
-  // Mobile category selection
-  const [mobileCategory, setMobileCategory] = useState<TweetCategory | 'trending'>('trending');
+  // Category filter state
+  const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('trending');
 
   // Execution state
   const [isExecuting, setIsExecuting] = useState(false);
   const [executeError, setExecuteError] = useState<string | null>(null);
-
-  // Check X connection status on mount
-  useEffect(() => {
-    if (!walletAddress) return;
-
-    const checkXStatus = async () => {
-      try {
-        const response = await fetch(`/api/twitter/status?wallet=${walletAddress}`);
-        const data = await response.json();
-
-        if (data.connected && data.account) {
-          setXAccount(data.account);
-        }
-      } catch (err) {
-        console.error('Failed to check X status:', err);
-      }
-    };
-
-    checkXStatus();
-  }, [walletAddress]);
 
   // Fetch X lists when connected
   useEffect(() => {
@@ -143,47 +129,6 @@ function SocialTradingContent({
 
     fetchTweets();
   }, [selectedListId, walletAddress]);
-
-  // Handle X OAuth connection
-  const handleConnectX = useCallback(async () => {
-    if (!walletAddress) return;
-
-    setIsConnectingX(true);
-    setXError(null);
-
-    try {
-      const response = await fetch('/api/twitter/auth', { method: 'POST' });
-      const data = await response.json();
-
-      if (data.authUrl) {
-        // Store verifier in cookie for callback
-        document.cookie = `x_code_verifier=${data.codeVerifier}; path=/; max-age=600; SameSite=Lax`;
-        document.cookie = `x_wallet=${walletAddress}; path=/; max-age=600; SameSite=Lax`;
-        document.cookie = `x_state=${data.state}; path=/; max-age=600; SameSite=Lax`;
-
-        // Redirect to Twitter
-        window.location.href = data.authUrl;
-      }
-    } catch (err) {
-      console.error('Failed to initiate X OAuth:', err);
-      setXError('Failed to connect to X');
-      setIsConnectingX(false);
-    }
-  }, [walletAddress]);
-
-  // Handle X disconnect
-  const handleDisconnectX = useCallback(async () => {
-    if (!walletAddress) return;
-
-    try {
-      await fetch(`/api/twitter/status?wallet=${walletAddress}`, { method: 'DELETE' });
-      setXAccount(null);
-      setXLists([]);
-      setSelectedListId(null);
-    } catch (err) {
-      console.error('Failed to disconnect X:', err);
-    }
-  }, [walletAddress]);
 
   // Handle Bullish button
   const handleBullish = useCallback((tweet: CryptoTweet) => {
@@ -243,54 +188,26 @@ function SocialTradingContent({
       .slice(0, 20);
   };
 
-  // If X not connected and required, show connect prompt
-  // For now, we'll allow mock data to show even without X connection
-  const showConnectPrompt = false; // Set to true if X connection is required
-
-  if (showConnectPrompt && !xAccount) {
-    return (
-      <XAccountConnectPrompt
-        isConnecting={isConnectingX}
-        onConnect={handleConnectX}
-        error={xError}
-      />
-    );
-  }
-
-  // Header with X account and list selector
-  const header = (
-    <div className="flex items-center justify-between px-4 py-3">
+  // Header with list selector and category filters (only when X connected)
+  const header = isXConnected ? (
+    <div className="flex items-center justify-end px-4 py-3">
       <div className="flex items-center gap-3">
-        <h2 className="text-lg font-medium text-white">Social Trading</h2>
+        <XListSelector
+          lists={xLists}
+          selectedListId={selectedListId}
+          onSelect={setSelectedListId}
+          isLoading={isLoadingLists}
+          selectedCategory={selectedCategory}
+          onCategoryChange={setSelectedCategory}
+        />
         {feedError && (
           <span className="px-2 py-1 text-xs text-yellow-400 bg-yellow-400/10 rounded-lg">
             Mock Data
           </span>
         )}
       </div>
-      <div className="flex items-center gap-3">
-        {xAccount && (
-          <XListSelector
-            lists={xLists}
-            selectedListId={selectedListId}
-            onSelect={setSelectedListId}
-            isLoading={isLoadingLists}
-          />
-        )}
-        <XAccountConnectCompact
-          account={xAccount ? {
-            id: xAccount.id,
-            username: xAccount.username,
-            displayName: xAccount.username,
-            avatar: xAccount.avatar,
-          } : null}
-          isConnecting={isConnectingX}
-          onConnect={handleConnectX}
-          onDisconnect={handleDisconnectX}
-        />
-      </div>
     </div>
-  );
+  ) : null;
 
   // Left column - AI tweets
   const leftColumn = (
@@ -306,10 +223,10 @@ function SocialTradingContent({
     />
   );
 
-  // Center column - Trending or Custom Input
+  // Center column - Trending or Your Narrative
   const centerColumn = (
-    <div className="h-full">
-      <ColumnHeader title={selectedTweet ? 'Custom Trade' : 'Trending'} />
+    <div className="h-full overflow-hidden">
+      <ColumnHeader title={selectedTweet ? 'Your Narrative' : 'Trending'} />
       <CenterPanel
         tweets={getTrendingTweets()}
         isLoading={isLoadingTweets}
@@ -355,17 +272,26 @@ function SocialTradingContent({
       onExecute={handleExecute}
       onClear={clearSuggestion}
       accountHealth={accountHealth}
+      isSetupComplete={isFullyReady}
+      isRunningSetup={isRunningSetup}
+      onConnectToTrade={openSetupModal}
+      onUpdateWeight={updateAssetWeight}
+      onRemoveAsset={removeAsset}
     />
   );
 
   return (
-    <SocialTradingLayout
-      header={header}
-      leftColumn={leftColumn}
-      centerColumn={centerColumn}
-      rightColumn={rightColumn}
-      bottomPanel={bottomPanel}
-    />
+    <>
+      <SocialTradingLayout
+        header={header}
+        leftColumn={leftColumn}
+        centerColumn={centerColumn}
+        rightColumn={rightColumn}
+        bottomPanel={bottomPanel}
+      />
+      {/* Unified setup modal */}
+      <ConnectToTradeModal />
+    </>
   );
 }
 

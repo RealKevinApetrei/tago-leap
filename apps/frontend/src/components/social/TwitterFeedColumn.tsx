@@ -2,6 +2,7 @@
 
 import { TweetCard, type CryptoTweet, type TweetCategory } from './TweetCard';
 import { ColumnHeader } from './SocialTradingLayout';
+import { useAutoScroll } from '@/hooks/useAutoScroll';
 
 interface TwitterFeedColumnProps {
   title: string;
@@ -13,6 +14,10 @@ interface TwitterFeedColumnProps {
   onBearish: (tweet: CryptoTweet) => void;
   onSelect: (tweet: CryptoTweet) => void;
   onRefresh?: () => void;
+  /** Enable auto-scrolling (default: true) */
+  autoScroll?: boolean;
+  /** Scroll speed in pixels per second (default: 30) */
+  scrollSpeed?: number;
 }
 
 export function TwitterFeedColumn({
@@ -25,33 +30,58 @@ export function TwitterFeedColumn({
   onBearish,
   onSelect,
   onRefresh,
+  autoScroll = true,
+  scrollSpeed = 30,
 }: TwitterFeedColumnProps) {
   const filteredTweets = tweets.filter(t => t.category === category);
 
+  const {
+    containerRef,
+    isPaused,
+  } = useAutoScroll({
+    speed: scrollSpeed,
+    pauseOnHover: true,
+    enabled: autoScroll && filteredTweets.length > 3,
+  });
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
       <ColumnHeader
         title={title}
         badge={filteredTweets.length.toString()}
         action={
-          onRefresh && (
-            <button
-              onClick={onRefresh}
-              className="p-1.5 rounded-lg hover:bg-white/[0.1] text-white/40 hover:text-white transition-colors"
-            >
-              <RefreshIcon className="w-4 h-4" />
-            </button>
-          )
+          <div className="flex items-center gap-2">
+            {/* Paused indicator */}
+            {autoScroll && isPaused && filteredTweets.length > 3 && (
+              <span className="text-[10px] text-white/30 px-1.5 py-0.5 bg-white/[0.05] rounded">
+                Paused
+              </span>
+            )}
+            {onRefresh && (
+              <button
+                onClick={onRefresh}
+                className="p-1.5 rounded-lg hover:bg-white/[0.1] text-white/40 hover:text-white transition-colors"
+              >
+                <RefreshIcon className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         }
       />
 
-      <div className="flex-1 overflow-y-auto">
+      {/* Top gradient fade */}
+      <div className="absolute top-[44px] left-0 right-0 h-6 bg-gradient-to-b from-[#0a0a0a] to-transparent z-10 pointer-events-none" />
+
+      <div
+        ref={containerRef as React.RefObject<HTMLDivElement>}
+        className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent"
+      >
         {isLoading ? (
           <LoadingState />
         ) : filteredTweets.length === 0 ? (
           <EmptyState category={category} />
         ) : (
-          <div className="divide-y divide-white/[0.06]">
+          <div className="divide-y divide-white/[0.06] pt-2">
             {filteredTweets.map((tweet) => (
               <TweetCard
                 key={tweet.id}
@@ -65,6 +95,9 @@ export function TwitterFeedColumn({
           </div>
         )}
       </div>
+
+      {/* Bottom gradient fade */}
+      <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-[#0a0a0a] to-transparent z-10 pointer-events-none" />
     </div>
   );
 }

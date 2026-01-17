@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { pearApi, saltApi, NarrativeSuggestion } from '@/lib/api';
+import { SocialTradingTab } from '@/components/social';
 import { usePearAuth } from '@/hooks/usePearAuth';
 import { useSaltAccount } from '@/hooks/useSaltAccount';
 import { useAgentWallet } from '@/hooks/useAgentWallet';
@@ -184,8 +185,7 @@ export default function RoboPage() {
     }
   }, [policy]);
 
-  // Advanced section state
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  // Policy saving state
   const [savingPolicy, setSavingPolicy] = useState(false);
 
   // Get AI suggestion
@@ -517,7 +517,7 @@ export default function RoboPage() {
         activePanel={activePanel}
         onPanelChange={setActivePanel}
       >
-        <div className="space-y-6">
+        <div className="max-w-lg mx-auto px-4 py-8 space-y-6">
           {/* Toast Notification */}
           {toast && (
             <div className="fixed right-4 top-1/2 -translate-y-1/2 z-50 max-w-md animate-in slide-in-from-right fade-in duration-300">
@@ -619,7 +619,7 @@ export default function RoboPage() {
     };
 
     return (
-      <div className="space-y-6">
+      <div className="max-w-lg mx-auto px-4 py-8 space-y-6">
         <SwapPanel title="Complete Setup" subtitle="One-time setup to start trading">
           {/* Progress Steps */}
           <div className="space-y-3">
@@ -925,40 +925,81 @@ export default function RoboPage() {
           )}
 
           {portfolioView === 'history' && (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {accountLoading ? (
                 <div className="text-center py-8 bg-white/[0.02] rounded-xl border border-white/[0.05]">
-                  <p className="text-white/40 font-light">Loading history...</p>
+                  <div className="w-6 h-6 mx-auto mb-3 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
+                  <p className="text-white/40 font-light text-sm">Loading trades...</p>
                 </div>
               ) : trades.length === 0 ? (
                 <div className="text-center py-12 bg-white/[0.02] rounded-xl border border-white/[0.05]">
-                  <svg className="w-12 h-12 mx-auto text-white/20 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <svg className="w-10 h-10 mx-auto text-white/10 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
-                  <p className="text-white/40 font-light">No trade history</p>
-                  <p className="text-xs text-white/30 mt-1">Your trades will appear here</p>
+                  <p className="text-white/50 font-light text-sm">No trades yet</p>
+                  <p className="text-xs text-white/30 mt-1">Completed trades will appear here</p>
                 </div>
               ) : (
                 <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
-                  {trades.map((trade) => (
-                    <div key={trade.id} className="p-3 bg-white/[0.03] rounded-lg border border-white/[0.08] hover:border-white/[0.12] transition-colors">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <p className="text-sm text-white font-light truncate">{trade.narrative_id || 'Direct Trade'}</p>
+                  {trades.map((trade) => {
+                    const date = new Date(trade.created_at);
+                    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                    const isLong = trade.direction?.toLowerCase().includes('long');
+                    const isShort = trade.direction?.toLowerCase().includes('short');
+
+                    return (
+                      <div key={trade.id} className="p-3 bg-white/[0.02] rounded-xl border border-white/[0.06] hover:bg-white/[0.04] hover:border-white/[0.10] transition-all">
+                        {/* Top row: Narrative + Status */}
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm text-white font-medium truncate">
+                              {trade.narrative_id || 'Manual Trade'}
+                            </span>
                             {trade.source === 'salt' && (
-                              <span className="text-[10px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">Robo</span>
+                              <span className="flex-shrink-0 text-[9px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded font-medium">AUTO</span>
                             )}
                           </div>
-                          <p className="text-xs text-white/40">{trade.direction} · ${trade.stake_usd} · {new Date(trade.created_at).toLocaleDateString()}</p>
+                          <Badge
+                            variant={trade.status === 'completed' ? 'success' : trade.status === 'pending' ? 'info' : 'error'}
+                          >
+                            {trade.status === 'completed' ? 'Filled' : trade.status === 'pending' ? 'Pending' : trade.status}
+                          </Badge>
                         </div>
-                        <Badge variant={trade.status === 'completed' ? 'success' : trade.status === 'pending' ? 'info' : 'error'}>{trade.status}</Badge>
+
+                        {/* Bottom row: Details */}
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-3 text-white/50">
+                            {/* Direction */}
+                            <span className={`font-medium ${isLong ? 'text-green-400' : isShort ? 'text-red-400' : 'text-white/60'}`}>
+                              {isLong ? '↑ Long' : isShort ? '↓ Short' : trade.direction}
+                            </span>
+                            {/* Stake */}
+                            <span className="text-white/40">
+                              ${Number(trade.stake_usd).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                            </span>
+                          </div>
+                          {/* Timestamp */}
+                          <span className="text-white/30 tabular-nums">
+                            {dateStr} · {timeStr}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
-              <Button variant="ghost" fullWidth size="sm" onClick={refreshTrades}>Refresh History</Button>
+
+              {/* Refresh button */}
+              <button
+                onClick={refreshTrades}
+                className="w-full py-2 text-xs text-white/40 hover:text-white/60 hover:bg-white/[0.02] rounded-lg transition-colors flex items-center justify-center gap-1.5"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+                Refresh
+              </button>
             </div>
           )}
         </div>
@@ -1044,431 +1085,24 @@ export default function RoboPage() {
         </div>
       )}
 
-      {/* Narrative Trading - Always shown */}
-      <SwapPanel title="Narrative Trading" subtitle="Describe your thesis, get a pair trade">
-          {/* Prompt Input */}
-          <div className="space-y-2">
-            <label className="block text-sm font-light text-white/70">Your Trading Idea</label>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="e.g., I think AI tokens will outperform ETH in the coming weeks..."
-              className="w-full h-24 bg-white/[0.03] border border-white/[0.08] rounded-xl px-4 py-3 text-white font-light placeholder:text-white/30 focus:outline-none focus:border-tago-yellow-400/50 focus:ring-1 focus:ring-tago-yellow-400/20 resize-none transition-all"
-              maxLength={1000}
-            />
-            <div className="flex justify-between items-center">
-              <p className="text-xs text-white/40 font-light">
-                Examples: "SOL ecosystem is heating up", "DeFi will recover vs majors"
-              </p>
-              <span className="text-xs text-white/40">{prompt.length}/1000</span>
-            </div>
-          </div>
-
-          <Button
-            variant="ghost"
-            fullWidth
-            onClick={handleGetSuggestion}
-            loading={loading}
-            disabled={!prompt.trim()}
-          >
-            Get AI Suggestion
-          </Button>
-
-          {/* AI Suggestion Display */}
-          {suggestion && (
-            <>
-              {/* VS Battle Card */}
-              <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-white/[0.05] to-transparent border border-white/[0.08] p-6">
-                <div className="absolute top-0 left-0 w-32 h-32 bg-green-500/20 blur-3xl rounded-full -translate-x-1/2 -translate-y-1/2" />
-                <div className="absolute bottom-0 right-0 w-32 h-32 bg-red-500/20 blur-3xl rounded-full translate-x-1/2 translate-y-1/2" />
-
-                <div className="relative flex items-center justify-between gap-4">
-                  <div className="flex-1 text-center">
-                    <div className="text-xs uppercase tracking-widest text-green-400/60 mb-2">Long</div>
-                    <div className="flex flex-wrap justify-center gap-1.5">
-                      {suggestion.longAssets.map((asset) => {
-                        const isDisallowed = !allowedTokens.includes(asset.asset);
-                        return (
-                          <span
-                            key={asset.asset}
-                            className={`group relative px-3 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-all ${
-                              isDisallowed
-                                ? 'bg-orange-500/20 border border-orange-500/50 text-orange-400'
-                                : 'bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20'
-                            }`}
-                            title={isDisallowed ? `${asset.asset} is not in your allowed tokens - click to remove` : `Click to remove ${asset.asset}`}
-                            onClick={() => removeAsset('long', asset.asset)}
-                          >
-                            {asset.asset}
-                            {isDisallowed && <span className="ml-1 text-orange-400/80">!</span>}
-                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-white/20 rounded-full opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                              <svg className="w-2.5 h-2.5 text-white/80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </span>
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col items-center px-4">
-                    <div className="w-px h-8 bg-gradient-to-b from-green-500/50 to-transparent" />
-                    <span className="text-white/20 text-xs font-bold my-2">VS</span>
-                    <div className="w-px h-8 bg-gradient-to-t from-red-500/50 to-transparent" />
-                  </div>
-
-                  <div className="flex-1 text-center">
-                    <div className="text-xs uppercase tracking-widest text-red-400/60 mb-2">Short</div>
-                    <div className="flex flex-wrap justify-center gap-1.5">
-                      {suggestion.shortAssets.map((asset) => {
-                        const isDisallowed = !allowedTokens.includes(asset.asset);
-                        return (
-                          <span
-                            key={asset.asset}
-                            className={`group relative px-3 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-all ${
-                              isDisallowed
-                                ? 'bg-orange-500/20 border border-orange-500/50 text-orange-400'
-                                : 'bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20'
-                            }`}
-                            title={isDisallowed ? `${asset.asset} is not in your allowed tokens - click to remove` : `Click to remove ${asset.asset}`}
-                            onClick={() => removeAsset('short', asset.asset)}
-                          >
-                            {asset.asset}
-                            {isDisallowed && <span className="ml-1 text-orange-400/80">!</span>}
-                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-white/20 rounded-full opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                              <svg className="w-2.5 h-2.5 text-white/80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </span>
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-6 flex items-center gap-3">
-                  <div className="flex-1 h-1.5 bg-white/[0.05] rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${
-                        suggestion.confidence >= 0.7 ? 'bg-gradient-to-r from-green-500 to-emerald-400' :
-                        suggestion.confidence >= 0.4 ? 'bg-gradient-to-r from-yellow-500 to-amber-400' :
-                        'bg-gradient-to-r from-red-500 to-rose-400'
-                      }`}
-                      style={{ width: `${suggestion.confidence * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-xs text-white/40 tabular-nums">{Math.round(suggestion.confidence * 100)}% confidence</span>
-                </div>
-
-                {suggestion.warnings && suggestion.warnings.length > 0 && (
-                  <div className="mt-3 flex items-center gap-2 text-yellow-400/60">
-                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                    <span className="text-[10px] uppercase tracking-wider">volatile pair</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Historical Performance Chart */}
-              <PerformanceChart
-                longAsset={suggestion.longAssets[0]?.asset}
-                shortAsset={suggestion.shortAssets[0]?.asset}
-                days={180}
-              />
-
-              {/* Rationale */}
-              <details className="group/rationale">
-                <summary className="bg-gradient-to-br from-white/[0.04] to-white/[0.02] border border-white/[0.08] rounded-xl p-3 flex items-center gap-3 cursor-pointer list-none hover:from-white/[0.06] transition-all">
-                  <div className="w-6 h-6 rounded-full bg-tago-yellow-400/10 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-3 h-3 text-tago-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zM8 16v-1h4v1a2 2 0 11-4 0zM12 14c.015-.34.208-.646.477-.859a4 4 0 10-4.954 0c.27.213.462.519.476.859h4.002z" />
-                    </svg>
-                  </div>
-                  <span className="text-xs text-white/50 flex-1">{suggestion.narrative}</span>
-                  <svg className="w-4 h-4 text-white/30 transition-transform group-open/rationale:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </summary>
-                <div className="mt-2 px-4 py-3 bg-white/[0.02] rounded-lg border border-white/[0.05]">
-                  <p className="text-sm text-white/60 leading-relaxed">{suggestion.rationale}</p>
-                </div>
-              </details>
-
-              {/* Weight Adjustment */}
-              <details className="group">
-                <summary className="flex items-center gap-2 text-xs text-white/30 cursor-pointer hover:text-white/50 transition-colors">
-                  <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                  adjust weights
-                </summary>
-                <div className="mt-3 space-y-2">
-                  {suggestion.longAssets.map((asset, i) => (
-                    <div key={asset.asset} className="flex items-center gap-3 text-sm">
-                      <span className="w-16 text-green-400/70">{asset.asset}</span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={Math.round(asset.weight * 100)}
-                        onChange={(e) => updateAssetWeight('long', i, parseInt(e.target.value) / 100)}
-                        className="flex-1 accent-green-400 h-1"
-                      />
-                      <span className="w-10 text-right text-white/40 tabular-nums">{Math.round(asset.weight * 100)}%</span>
-                    </div>
-                  ))}
-                  {suggestion.shortAssets.map((asset, i) => (
-                    <div key={asset.asset} className="flex items-center gap-3 text-sm">
-                      <span className="w-16 text-red-400/70">{asset.asset}</span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={Math.round(asset.weight * 100)}
-                        onChange={(e) => updateAssetWeight('short', i, parseInt(e.target.value) / 100)}
-                        className="flex-1 accent-red-400 h-1"
-                      />
-                      <span className="w-10 text-right text-white/40 tabular-nums">{Math.round(asset.weight * 100)}%</span>
-                    </div>
-                  ))}
-                </div>
-              </details>
-
-              {/* Trade Configuration */}
-              <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="Stake (USD)"
-                  type="number"
-                  value={stakeUsd}
-                  onChange={(e) => setStakeUsd(e.target.value)}
-                  placeholder="100"
-                />
-                <div className="space-y-2">
-                  <label className="block text-sm font-light text-white/70">
-                    Leverage: {leverage}x
-                  </label>
-                  <input
-                    type="range"
-                    min="1"
-                    max={parseInt(maxLeverage) || 5}
-                    value={leverage}
-                    onChange={(e) => setLeverage(parseInt(e.target.value))}
-                    className="w-full accent-tago-yellow-400"
-                  />
-                  <div className="flex justify-between text-xs text-white/40">
-                    <span>1x</span>
-                    <span>{maxLeverage}x max</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Trade Summary */}
-              <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08] space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-white/40 font-light">Type</span>
-                  <span className="text-white font-light">
-                    {suggestion.longAssets.filter(a => a.weight > 0).length === 0 ? 'Short Only' :
-                     suggestion.shortAssets.filter(a => a.weight > 0).length === 0 ? 'Long Only' :
-                     (suggestion.longAssets.filter(a => a.weight > 0).length + suggestion.shortAssets.filter(a => a.weight > 0).length) > 2 ? 'Basket' : 'Pair'}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-white/40 font-light">Stake</span>
-                  <span className="text-white font-light">${parseFloat(stakeUsd || '0').toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-white/40 font-light">Leverage</span>
-                  <span className="text-white font-light">{leverage}x</span>
-                </div>
-                <div className="flex justify-between text-sm border-t border-white/[0.08] pt-3">
-                  <span className="text-white/40 font-light">Notional Exposure</span>
-                  <span className="text-tago-yellow-400 font-medium">
-                    ${(parseFloat(stakeUsd || '0') * leverage).toFixed(2)}
-                  </span>
-                </div>
-
-                {/* Balance Check */}
-                <div className="border-t border-white/[0.08] pt-3 space-y-2">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-white/40 font-light">Available Balance</span>
-                    {balanceLoading ? (
-                      <span className="text-white/40 text-xs">Loading...</span>
-                    ) : balanceError ? (
-                      <span className="text-red-400 text-xs">Error loading</span>
-                    ) : (
-                      <span className={`font-medium ${
-                        hlBalance && hlBalance.availableBalance >= (parseFloat(stakeUsd || '0') * leverage)
-                          ? 'text-green-400'
-                          : 'text-red-400'
-                      }`}>
-                        ${hlBalance?.availableBalance.toFixed(2) || '0.00'}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Insufficient balance warning */}
-                  {hlBalance && hlBalance.availableBalance < (parseFloat(stakeUsd || '0') * leverage) && (
-                    <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-                      <p className="text-xs text-red-400 mb-2">
-                        Insufficient balance. Need ${((parseFloat(stakeUsd || '0') * leverage) - hlBalance.availableBalance).toFixed(2)} more.
-                      </p>
-                      <button
-                        onClick={openDeposit}
-                        className="text-xs text-tago-yellow-400 hover:underline"
-                      >
-                        Deposit more USDC →
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Account health indicator */}
-                  {hlBalance && hlBalance.accountHealth < 50 && (
-                    <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-2">
-                      <p className="text-xs text-yellow-400">
-                        Account health: {hlBalance.accountHealth.toFixed(0)}% - Consider reducing leverage
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Pre-execution warning for disallowed assets */}
-              {suggestion && (() => {
-                const disallowedLong = suggestion.longAssets.filter(a => a.weight > 0 && !allowedTokens.includes(a.asset));
-                const disallowedShort = suggestion.shortAssets.filter(a => a.weight > 0 && !allowedTokens.includes(a.asset));
-                const allDisallowed = [...disallowedLong, ...disallowedShort];
-
-                if (allDisallowed.length > 0) {
-                  return (
-                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl mb-3">
-                      <div className="flex items-start gap-2">
-                        <svg className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                        </svg>
-                        <div className="text-sm">
-                          <p className="text-amber-400 font-medium">Disallowed tokens detected</p>
-                          <p className="text-white/50 text-xs mt-1">
-                            {allDisallowed.map(a => a.asset).join(', ')} not in your allowed list.
-                            Click tokens to remove or add them in Risk settings.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-
-              <Button
-                variant="yellow"
-                fullWidth
-                size="lg"
-                onClick={handleExecute}
-                loading={executing}
-                disabled={
-                  balanceLoading ||
-                  (hlBalance !== null && hlBalance.availableBalance < (parseFloat(stakeUsd || '0') * leverage))
-                }
-              >
-                {hlBalance && hlBalance.availableBalance < (parseFloat(stakeUsd || '0') * leverage)
-                  ? 'Insufficient Balance'
-                  : 'Execute Trade'}
-              </Button>
-            </>
-          )}
-
-        </SwapPanel>
-
-      {/* Advanced Details - Collapsible section at bottom */}
-      <div className="mt-2">
-        <button
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          className="w-full flex items-center justify-center gap-2 py-2 text-xs text-white/30 hover:text-white/50 transition-colors"
-        >
-          <svg
-            className={`w-3 h-3 transition-transform ${showAdvanced ? 'rotate-180' : ''}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-          Advanced
-        </button>
-
-        {showAdvanced && (
-          <div className="mt-2 p-4 bg-white/[0.02] rounded-xl border border-white/[0.05] space-y-3">
-            <div className="grid grid-cols-1 gap-3">
-              {/* Wallet Address */}
-              <div>
-                <span className="text-xs text-white/30 block mb-1">Wallet</span>
-                <p className="text-xs text-white/60 font-mono truncate">{address || 'Not connected'}</p>
-              </div>
-
-              {/* Robo Account */}
-              {account && (
-                <div>
-                  <span className="text-xs text-white/30 block mb-1">Robo Account</span>
-                  <p className="text-xs text-white/60 font-mono truncate">{account.salt_account_address}</p>
-                </div>
-              )}
-
-              {/* Agent Wallet */}
-              {agentWalletAddress && (
-                <div>
-                  <span className="text-xs text-white/30 block mb-1">Agent Wallet</span>
-                  <p className="text-xs text-white/60 font-mono truncate">{agentWalletAddress}</p>
-                </div>
-              )}
-
-              {/* Status Badges */}
-              <div className="flex flex-wrap gap-2 pt-2 border-t border-white/[0.05]">
-                <div className="flex items-center gap-1.5">
-                  <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-400' : 'bg-white/20'}`} />
-                  <span className="text-xs text-white/40">Connected</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className={`w-1.5 h-1.5 rounded-full ${isAuthenticated ? 'bg-green-400' : 'bg-white/20'}`} />
-                  <span className="text-xs text-white/40">Authenticated</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className={`w-1.5 h-1.5 rounded-full ${agentWalletExists ? 'bg-green-400' : 'bg-white/20'}`} />
-                  <span className="text-xs text-white/40">Agent Wallet</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className={`w-1.5 h-1.5 rounded-full ${builderFeeApproved ? 'bg-green-400' : 'bg-white/20'}`} />
-                  <span className="text-xs text-white/40">Builder Fee</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className={`w-1.5 h-1.5 rounded-full ${account ? 'bg-green-400' : 'bg-white/20'}`} />
-                  <span className="text-xs text-white/40">Robo Account</span>
-                </div>
-              </div>
-
-              {/* Hyperliquid Balance */}
-              {hlBalance && (
-                <div className="pt-2 border-t border-white/[0.05]">
-                  <span className="text-xs text-white/30 block mb-1">Hyperliquid Balance</span>
-                  <p className="text-xs text-white/60">
-                    Available: <span className="text-white/80">${hlBalance.availableBalance.toFixed(2)}</span>
-                    <span className="ml-2">
-                      Equity: <span className="text-white/80">${hlBalance.equity.toFixed(2)}</span>
-                    </span>
-                    {hlBalance.unrealizedPnl !== 0 && (
-                      <span className={`ml-2 ${hlBalance.unrealizedPnl >= 0 ? 'text-green-400/80' : 'text-red-400/80'}`}>
-                        PnL: {hlBalance.unrealizedPnl >= 0 ? '+' : ''}${hlBalance.unrealizedPnl.toFixed(2)}
-                      </span>
-                    )}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Social Trading Tab */}
+      <SocialTradingTab
+        accountId={account?.id || null}
+        maxLeverage={parseInt(maxLeverage) || 5}
+        availableBalance={hlBalance?.availableBalance || 0}
+        accountHealth={hlBalance?.accountHealth}
+        walletAddress={address}
+        onTradeSuccess={async () => {
+          showToast('success', 'Trade executed successfully!');
+          setIsRefreshingAfterTrade(true);
+          try {
+            await Promise.all([refreshTrades(), refreshPositions(), refreshBalance()]);
+          } finally {
+            setIsRefreshingAfterTrade(false);
+          }
+          setActivePanel('portfolio');
+        }}
+      />
       </div>
     </SidePanelsProvider>
   );

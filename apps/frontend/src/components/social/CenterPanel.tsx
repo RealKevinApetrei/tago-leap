@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import { TweetCard, SelectedTweetCard, type CryptoTweet } from './TweetCard';
+import { TweetCard, type CryptoTweet } from './TweetCard';
 import { Button } from '@/components/ui/Button';
 
 interface CenterPanelProps {
@@ -139,31 +138,15 @@ function CustomInputPanel({
   const hasNarrative = customNarrative.trim().length > 0;
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-white/[0.06] bg-black/40">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white/80">Custom Trade</h3>
-          <button
-            onClick={onClearSelection}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white/[0.08] text-white/60 hover:bg-white/[0.12] hover:text-white transition-colors"
-          >
-            Reset
-          </button>
-        </div>
-      </div>
+    <div className="flex flex-col h-full items-center justify-center px-6 overflow-hidden">
+      <div className="w-full max-w-md space-y-5">
+        {/* Title */}
+        <h2 className="text-2xl font-light text-white/90 text-center">
+          What are you thinking?
+        </h2>
 
-      {/* Selected Tweet Context */}
-      <div className="flex-shrink-0 p-4">
-        <SelectedTweetCard tweet={selectedTweet} onDeselect={onClearSelection} />
-      </div>
-
-      {/* Custom Narrative Input */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-8">
-        <div className="w-full max-w-md">
-          <label className="block text-center mb-4">
-            <span className="text-2xl font-light text-white/90">What are you thinking today?</span>
-          </label>
+        {/* Custom Narrative Input */}
+        <div>
           <textarea
             value={customNarrative}
             onChange={(e) => onNarrativeChange(e.target.value)}
@@ -174,58 +157,40 @@ function CustomInputPanel({
               transition-all"
             maxLength={500}
           />
-          <div className="flex items-center justify-between mt-2 text-xs text-white/40">
-            <span>Use the tweet above as context for your trade idea</span>
+          <div className="flex items-center justify-end mt-2 text-xs text-white/40">
             <span>{customNarrative.length}/500</span>
           </div>
-
-          {/* Generate Button */}
-          <Button
-            onClick={onGenerateTrade}
-            disabled={!hasNarrative || isGenerating}
-            className={`
-              w-full mt-4 h-12 text-base font-semibold rounded-xl transition-all
-              ${hasNarrative && !isGenerating
-                ? 'bg-[#E8FF00] text-black hover:bg-[#d4eb00]'
-                : 'bg-white/[0.1] text-white/40 cursor-not-allowed'
-              }
-            `}
-          >
-            {isGenerating ? (
-              <span className="flex items-center justify-center gap-2">
-                <LoadingSpinner className="w-4 h-4" />
-                Generating Trade...
-              </span>
-            ) : (
-              'Generate Trade'
-            )}
-          </Button>
         </div>
-      </div>
 
-      {/* Quick Actions */}
-      <div className="flex-shrink-0 px-4 py-3 border-t border-white/[0.06] bg-black/40">
-        <p className="text-xs text-white/40 text-center mb-3">
-          Or use quick actions based on the tweet sentiment
-        </p>
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
-              onNarrativeChange(`Based on this tweet, I'm bullish on ${selectedTweet.mentionedAssets.join(', ')}`);
-            }}
-            className="flex-1 px-4 py-2 text-sm font-medium rounded-lg bg-green-500/20 text-green-400 hover:bg-green-500/30 transition-colors"
-          >
-            I'm Bullish
-          </button>
-          <button
-            onClick={() => {
-              onNarrativeChange(`Based on this tweet, I'm bearish and want to short ${selectedTweet.mentionedAssets.join(', ')}`);
-            }}
-            className="flex-1 px-4 py-2 text-sm font-medium rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
-          >
-            I'm Bearish
-          </button>
-        </div>
+        {/* Generate Button */}
+        <Button
+          onClick={onGenerateTrade}
+          disabled={!hasNarrative || isGenerating}
+          className={`
+            w-full h-12 text-base font-semibold rounded-xl transition-all
+            ${hasNarrative && !isGenerating
+              ? 'bg-[#E8FF00] text-black hover:bg-[#d4eb00]'
+              : 'bg-white/[0.1] text-white/40 cursor-not-allowed'
+            }
+          `}
+        >
+          {isGenerating ? (
+            <span className="flex items-center justify-center gap-2">
+              <LoadingSpinner className="w-4 h-4" />
+              Generating Trade...
+            </span>
+          ) : (
+            'Generate Trade'
+          )}
+        </Button>
+
+        {/* Unselect Post Button */}
+        <button
+          onClick={onClearSelection}
+          className="w-full py-3 text-sm font-medium text-white/50 hover:text-white/80 transition-colors"
+        >
+          Unselect post
+        </button>
       </div>
     </div>
   );

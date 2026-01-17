@@ -25,7 +25,7 @@ export function SocialTradingLayout({
   header,
 }: SocialTradingLayoutProps) {
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden">
+    <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden pl-12 pr-12">
       {/* Optional Header (X Account Connect, List Selector) */}
       {header && (
         <div className="flex-shrink-0 border-b border-white/[0.06] bg-black/20 backdrop-blur-sm">

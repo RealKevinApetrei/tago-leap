@@ -34,6 +34,10 @@ interface SocialTradeState {
   leverage: number;
   setStakeUsd: (value: string) => void;
   setLeverage: (value: number) => void;
+
+  // Asset weight management
+  updateAssetWeight: (side: 'long' | 'short', index: number, weight: number) => void;
+  removeAsset: (side: 'long' | 'short', asset: string) => void;
 }
 
 const SocialTradeContext = createContext<SocialTradeState | null>(null);
@@ -70,6 +74,59 @@ export function SocialTradeProvider({ children }: { children: ReactNode }) {
   const clearSuggestion = useCallback(() => {
     setSuggestion(null);
     setGenerateError(null);
+  }, []);
+
+  // Update asset weight and normalize remaining weights
+  const updateAssetWeight = useCallback((side: 'long' | 'short', index: number, weight: number) => {
+    setSuggestion(prev => {
+      if (!prev) return prev;
+
+      const assets = side === 'long' ? [...prev.longAssets] : [...prev.shortAssets];
+      if (index < 0 || index >= assets.length) return prev;
+
+      // Update the target weight
+      assets[index] = { ...assets[index], weight };
+
+      // Calculate remaining weight to distribute
+      const totalWeight = assets.reduce((sum, a) => sum + a.weight, 0);
+
+      // Normalize weights to sum to 1 (100%)
+      if (totalWeight > 0) {
+        const scaleFactor = 1 / totalWeight;
+        assets.forEach((a, i) => {
+          assets[i] = { ...a, weight: a.weight * scaleFactor };
+        });
+      }
+
+      return side === 'long'
+        ? { ...prev, longAssets: assets }
+        : { ...prev, shortAssets: assets };
+    });
+  }, []);
+
+  // Remove asset and redistribute weights
+  const removeAsset = useCallback((side: 'long' | 'short', asset: string) => {
+    setSuggestion(prev => {
+      if (!prev) return prev;
+
+      const assets = side === 'long' ? [...prev.longAssets] : [...prev.shortAssets];
+      const filteredAssets = assets.filter(a => a.asset !== asset);
+
+      // Redistribute weights among remaining assets
+      if (filteredAssets.length > 0) {
+        const totalWeight = filteredAssets.reduce((sum, a) => sum + a.weight, 0);
+        if (totalWeight > 0) {
+          const scaleFactor = 1 / totalWeight;
+          filteredAssets.forEach((a, i) => {
+            filteredAssets[i] = { ...a, weight: a.weight * scaleFactor };
+          });
+        }
+      }
+
+      return side === 'long'
+        ? { ...prev, longAssets: filteredAssets }
+        : { ...prev, shortAssets: filteredAssets };
+    });
   }, []);
 
   // Generate trade from tweet with direction (Bullish/Bearish buttons)
@@ -152,6 +209,8 @@ Generate a pair trade based on this analysis.`;
     leverage,
     setStakeUsd,
     setLeverage,
+    updateAssetWeight,
+    removeAsset,
   };
 
   return (

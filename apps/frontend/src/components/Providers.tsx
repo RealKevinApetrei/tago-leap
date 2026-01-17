@@ -6,6 +6,7 @@ import { WagmiProvider, type State, cookieToInitialState } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { config } from '@/lib/wagmi';
 import { DepositModalProvider } from '@/components/DepositModal';
+import { UnifiedSetupProvider } from '@/contexts/UnifiedSetupContext';
 
 import '@rainbow-me/rainbowkit/styles.css';
 
@@ -83,7 +84,9 @@ export function Providers({ children, cookie }: ProvidersProps) {
           modalSize="compact"
         >
           <DepositModalProvider>
-            {mounted ? children : null}
+            <UnifiedSetupProvider>
+              {mounted ? children : null}
+            </UnifiedSetupProvider>
           </DepositModalProvider>
         </RainbowKitProvider>
       </QueryClientProvider>

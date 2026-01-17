@@ -18,6 +18,16 @@ interface TradeControlPanelProps {
   onExecute: () => void;
   onClear: () => void;
   accountHealth?: number;
+  // Setup state - replaces X connection
+  isSetupComplete?: boolean;
+  isRunningSetup?: boolean;
+  onConnectToTrade?: () => void;
+  // Asset weight management
+  onUpdateWeight?: (side: 'long' | 'short', index: number, weight: number) => void;
+  onRemoveAsset?: (side: 'long' | 'short', asset: string) => void;
+  // Risk management
+  todayNotional?: number;
+  maxDailyNotional?: number;
 }
 
 export function TradeControlPanel({
@@ -33,21 +43,37 @@ export function TradeControlPanel({
   onExecute,
   onClear,
   accountHealth = 100,
+  isSetupComplete = false,
+  isRunningSetup = false,
+  onConnectToTrade,
+  onUpdateWeight,
+  onRemoveAsset,
+  todayNotional = 0,
+  maxDailyNotional = 100000,
 }: TradeControlPanelProps) {
   const stake = parseFloat(stakeUsd) || 0;
   const notional = stake * leverage;
   const hasInsufficientBalance = stake > availableBalance;
   const isMinNotionalMet = notional >= 10;
-  const canExecute = suggestion && !hasInsufficientBalance && isMinNotionalMet && !isExecuting;
+  const canExecute = suggestion && !hasInsufficientBalance && isMinNotionalMet && !isExecuting && isSetupComplete;
+
+  // Risk level calculation
+  const dailyUsagePercent = maxDailyNotional > 0 ? (todayNotional / maxDailyNotional) * 100 : 0;
+  const riskLevel = dailyUsagePercent >= 90 ? 'high' : dailyUsagePercent >= 70 ? 'medium' : 'low';
 
   return (
     <div className="p-4 md:p-6">
       {/* Desktop: Horizontal Layout */}
       <div className="hidden md:flex items-center gap-6">
         {/* Trade Preview (Left) */}
-        <div className="flex-shrink-0 w-64">
+        <div className="flex-shrink-0 w-72">
           {suggestion ? (
-            <TradePreview suggestion={suggestion} onClear={onClear} />
+            <TradePreview
+              suggestion={suggestion}
+              onClear={onClear}
+              onUpdateWeight={onUpdateWeight}
+              onRemoveAsset={onRemoveAsset}
+            />
           ) : (
             <div className="flex items-center justify-center h-20 rounded-xl bg-white/[0.03] border border-dashed border-white/[0.1]">
               <p className="text-sm text-white/40">
@@ -115,46 +141,90 @@ export function TradeControlPanel({
           {accountHealth < 100 && (
             <div>
               <span className="text-xs text-white/50">Health</span>
-              <p className={`text-lg font-semibold ${accountHealth < 50 ? 'text-red-400' : 'text-white/90'}`}>
+              <p className={`text-lg font-semibold ${accountHealth < 50 ? 'text-red-400' : accountHealth < 80 ? 'text-yellow-400' : 'text-white/90'}`}>
                 {accountHealth.toFixed(0)}%
+              </p>
+            </div>
+          )}
+          {/* Daily Notional Progress */}
+          {maxDailyNotional > 0 && (
+            <div className="min-w-[100px]">
+              <span className="text-xs text-white/50">Daily Limit</span>
+              <div className="mt-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all ${
+                    riskLevel === 'high' ? 'bg-red-500' :
+                    riskLevel === 'medium' ? 'bg-yellow-400' : 'bg-green-400'
+                  }`}
+                  style={{ width: `${Math.min(dailyUsagePercent, 100)}%` }}
+                />
+              </div>
+              <p className={`text-xs mt-0.5 ${
+                riskLevel === 'high' ? 'text-red-400' :
+                riskLevel === 'medium' ? 'text-yellow-400' : 'text-white/50'
+              }`}>
+                {dailyUsagePercent.toFixed(0)}% used
               </p>
             </div>
           )}
         </div>
 
-        {/* Execute Button */}
-        <Button
-          onClick={onExecute}
-          disabled={!canExecute}
-          className={`
-            h-12 px-8 text-base font-semibold rounded-xl transition-all
-            ${canExecute
-              ? 'bg-[#E8FF00] text-black hover:bg-[#d4eb00]'
-              : 'bg-white/[0.1] text-white/40 cursor-not-allowed'
-            }
-          `}
-        >
-          {isExecuting ? (
-            <span className="flex items-center gap-2">
-              <LoadingSpinner />
-              Executing...
-            </span>
-          ) : isGenerating ? (
-            <span className="flex items-center gap-2">
-              <LoadingSpinner />
-              Generating...
-            </span>
-          ) : (
-            'Execute Trade'
-          )}
-        </Button>
+        {/* Connect to Trade or Execute Button */}
+        {!isSetupComplete ? (
+          <Button
+            onClick={onConnectToTrade}
+            disabled={isRunningSetup}
+            className="h-12 px-8 text-base font-semibold rounded-xl bg-[#E8FF00] text-black hover:bg-[#d4eb00] transition-all"
+          >
+            {isRunningSetup ? (
+              <span className="flex items-center gap-2">
+                <LoadingSpinner />
+                Setting up...
+              </span>
+            ) : (
+              'Connect to Trade'
+            )}
+          </Button>
+        ) : (
+          <Button
+            onClick={onExecute}
+            disabled={!canExecute}
+            className={`
+              h-12 px-8 text-base font-semibold rounded-xl transition-all
+              ${canExecute
+                ? 'bg-[#E8FF00] text-black hover:bg-[#d4eb00]'
+                : 'bg-white/[0.1] text-white/40 cursor-not-allowed'
+              }
+            `}
+          >
+            {isExecuting ? (
+              <span className="flex items-center gap-2">
+                <LoadingSpinner />
+                Executing...
+              </span>
+            ) : isGenerating ? (
+              <span className="flex items-center gap-2">
+                <LoadingSpinner />
+                Generating...
+              </span>
+            ) : (
+              'Execute Trade'
+            )}
+          </Button>
+        )}
       </div>
 
       {/* Mobile: Stacked Layout */}
       <div className="md:hidden space-y-4">
         {/* Trade Preview */}
         {suggestion ? (
-          <TradePreview suggestion={suggestion} onClear={onClear} compact />
+          <TradePreview
+            suggestion={suggestion}
+            onClear={onClear}
+            onUpdateWeight={onUpdateWeight}
+            onRemoveAsset={onRemoveAsset}
+            compact
+          />
         ) : (
           <div className="flex items-center justify-center h-16 rounded-xl bg-white/[0.03] border border-dashed border-white/[0.1]">
             <p className="text-sm text-white/40">
@@ -186,13 +256,23 @@ export function TradeControlPanel({
             />
             <span className="text-xs text-white/60">{leverage}x</span>
           </div>
-          <Button
-            onClick={onExecute}
-            disabled={!canExecute}
-            className="h-10 px-4 text-sm font-semibold"
-          >
-            {isExecuting ? 'Executing...' : 'Execute'}
-          </Button>
+          {!isSetupComplete ? (
+            <Button
+              onClick={onConnectToTrade}
+              disabled={isRunningSetup}
+              className="h-10 px-4 text-sm font-semibold bg-[#E8FF00] text-black hover:bg-[#d4eb00]"
+            >
+              {isRunningSetup ? '...' : 'Connect'}
+            </Button>
+          ) : (
+            <Button
+              onClick={onExecute}
+              disabled={!canExecute}
+              className="h-10 px-4 text-sm font-semibold"
+            >
+              {isExecuting ? 'Executing...' : 'Execute'}
+            </Button>
+          )}
         </div>
 
         {/* Summary Row */}
@@ -210,15 +290,106 @@ export function TradeControlPanel({
 }
 
 /**
- * Trade Preview - Mini VS Battle Card
+ * Editable Asset Badge - Shows weight, allows editing and removal
+ */
+function AssetBadge({
+  asset,
+  weight,
+  side,
+  index,
+  onUpdateWeight,
+  onRemove,
+}: {
+  asset: string;
+  weight: number;
+  side: 'long' | 'short';
+  index: number;
+  onUpdateWeight?: (side: 'long' | 'short', index: number, weight: number) => void;
+  onRemove?: (side: 'long' | 'short', asset: string) => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editWeight, setEditWeight] = useState((weight * 100).toFixed(0));
+  const isLong = side === 'long';
+
+  const handleWeightChange = () => {
+    const newWeight = parseFloat(editWeight) / 100;
+    if (!isNaN(newWeight) && newWeight > 0 && newWeight <= 1 && onUpdateWeight) {
+      onUpdateWeight(side, index, newWeight);
+    }
+    setIsEditing(false);
+  };
+
+  return (
+    <div className="group relative">
+      <div
+        className={`flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded cursor-pointer transition-all ${
+          isLong
+            ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+            : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+        }`}
+        onClick={() => setIsEditing(true)}
+      >
+        <span>{asset}</span>
+        <span className="text-[10px] opacity-70">{(weight * 100).toFixed(0)}%</span>
+      </div>
+
+      {/* Remove button on hover */}
+      {onRemove && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove(side, asset);
+          }}
+          className={`absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity ${
+            isLong ? 'bg-green-500 text-black' : 'bg-red-500 text-white'
+          }`}
+        >
+          <XIcon className="w-2.5 h-2.5" />
+        </button>
+      )}
+
+      {/* Weight edit popover */}
+      {isEditing && (
+        <div className="absolute top-full left-0 mt-1 z-50 p-2 rounded-lg bg-black/90 border border-white/20 shadow-xl">
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={editWeight}
+              onChange={(e) => setEditWeight(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleWeightChange()}
+              className="w-16 px-2 py-1 text-xs bg-white/10 border border-white/20 rounded text-white"
+              min="1"
+              max="100"
+              autoFocus
+            />
+            <span className="text-xs text-white/50">%</span>
+            <button
+              onClick={handleWeightChange}
+              className="p-1 rounded bg-white/10 hover:bg-white/20 text-white/60"
+            >
+              <CheckIcon className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Trade Preview - Mini VS Battle Card with editable weights
  */
 function TradePreview({
   suggestion,
   onClear,
+  onUpdateWeight,
+  onRemoveAsset,
   compact = false,
 }: {
   suggestion: NarrativeSuggestion;
   onClear: () => void;
+  onUpdateWeight?: (side: 'long' | 'short', index: number, weight: number) => void;
+  onRemoveAsset?: (side: 'long' | 'short', asset: string) => void;
   compact?: boolean;
 }) {
   const longAssets = suggestion.longAssets.filter(a => a.weight > 0);
@@ -242,17 +413,20 @@ function TradePreview({
             <ArrowUpIcon className="w-3.5 h-3.5 text-green-400" />
             <span className="text-xs text-green-400 font-medium">Long</span>
           </div>
-          <div className="flex flex-wrap gap-1">
-            {longAssets.slice(0, 3).map((asset) => (
-              <span
+          <div className="flex flex-wrap gap-1.5">
+            {longAssets.slice(0, compact ? 2 : 4).map((asset, idx) => (
+              <AssetBadge
                 key={asset.asset}
-                className="px-1.5 py-0.5 text-xs font-medium rounded bg-green-500/20 text-green-400"
-              >
-                {asset.asset}
-              </span>
+                asset={asset.asset}
+                weight={asset.weight}
+                side="long"
+                index={idx}
+                onUpdateWeight={onUpdateWeight}
+                onRemove={onRemoveAsset}
+              />
             ))}
-            {longAssets.length > 3 && (
-              <span className="text-xs text-white/40">+{longAssets.length - 3}</span>
+            {longAssets.length > (compact ? 2 : 4) && (
+              <span className="text-xs text-white/40 self-center">+{longAssets.length - (compact ? 2 : 4)}</span>
             )}
           </div>
         </div>
@@ -266,17 +440,20 @@ function TradePreview({
             <span className="text-xs text-red-400 font-medium">Short</span>
             <ArrowDownIcon className="w-3.5 h-3.5 text-red-400" />
           </div>
-          <div className="flex flex-wrap gap-1 justify-end">
-            {shortAssets.slice(0, 3).map((asset) => (
-              <span
+          <div className="flex flex-wrap gap-1.5 justify-end">
+            {shortAssets.slice(0, compact ? 2 : 4).map((asset, idx) => (
+              <AssetBadge
                 key={asset.asset}
-                className="px-1.5 py-0.5 text-xs font-medium rounded bg-red-500/20 text-red-400"
-              >
-                {asset.asset}
-              </span>
+                asset={asset.asset}
+                weight={asset.weight}
+                side="short"
+                index={idx}
+                onUpdateWeight={onUpdateWeight}
+                onRemove={onRemoveAsset}
+              />
             ))}
-            {shortAssets.length > 3 && (
-              <span className="text-xs text-white/40">+{shortAssets.length - 3}</span>
+            {shortAssets.length > (compact ? 2 : 4) && (
+              <span className="text-xs text-white/40 self-center">+{shortAssets.length - (compact ? 2 : 4)}</span>
             )}
           </div>
         </div>
@@ -342,6 +519,14 @@ function LoadingSpinner() {
         fill="currentColor"
         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
       />
+    </svg>
+  );
+}
+
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
     </svg>
   );
 }
