@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getOrCreateUser } from '@/lib/api-server/domain/userRepo';
-import { createSaltAccount, getSaltAccountByWalletAddress } from '@/lib/api-server/domain/saltRepo';
-import { getSupabaseAdmin } from '@/lib/api-server/supabase';
 
 export async function POST(request: NextRequest) {
   try {
-    const { userWalletAddress } = await request.json();
+    // Dynamic imports to catch any initialization errors
+    const { getOrCreateUser } = await import('@/lib/api-server/domain/userRepo');
+    const { createSaltAccount, getSaltAccountByWalletAddress } = await import('@/lib/api-server/domain/saltRepo');
+    const { getSupabaseAdmin } = await import('@/lib/api-server/supabase');
+
+    let body: any;
+    try {
+      body = await request.json();
+    } catch (parseErr) {
+      return NextResponse.json(
+        { success: false, error: { code: 'BAD_REQUEST', message: 'Invalid JSON in request body' } },
+        { status: 400 }
+      );
+    }
+
+    const { userWalletAddress } = body;
 
     if (!userWalletAddress) {
       return NextResponse.json(
