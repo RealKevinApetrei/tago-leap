@@ -57,8 +57,11 @@ function SocialTradingContent({
     xAccount,
     isXConnected,
     isFullyReady,
+    isSetupComplete,
+    isConnectingX,
     isRunning: isRunningSetup,
     openSetupModal,
+    connectX,
   } = useUnifiedSetupContext();
 
   // Twitter lists state
@@ -258,6 +261,11 @@ function SocialTradingContent({
   );
 
   // Bottom panel - Trade controls
+  // If setup (steps 1-5) is complete but X not connected, go directly to X OAuth
+  // Otherwise, open the setup modal
+  const handleConnectAction = isSetupComplete && !isXConnected ? connectX : openSetupModal;
+  const isConnecting = isSetupComplete && !isXConnected ? isConnectingX : isRunningSetup;
+
   const bottomPanel = (
     <TradeControlPanel
       suggestion={suggestion}
@@ -273,8 +281,9 @@ function SocialTradingContent({
       onClear={clearSuggestion}
       accountHealth={accountHealth}
       isSetupComplete={isFullyReady}
-      isRunningSetup={isRunningSetup}
-      onConnectToTrade={openSetupModal}
+      isRunningSetup={isConnecting}
+      onConnectToTrade={handleConnectAction}
+      isXConnectionOnly={isSetupComplete && !isXConnected}
       onUpdateWeight={updateAssetWeight}
       onRemoveAsset={removeAsset}
     />

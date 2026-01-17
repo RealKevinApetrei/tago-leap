@@ -1,5 +1,6 @@
 {
-  "crons": [
+  "_crons_disabled": "Cron jobs disabled for Hobby plan. Upgrade to Pro to re-enable.",
+  "_crons_backup": [
     {
       "path": "/api/cron/risk-monitor",
       "schedule": "*/5 * * * *"

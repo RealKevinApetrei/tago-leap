@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { getAuthUrl } from '@/lib/api-server/clients/twitterClient';
+import { getAuthUrl, validateXConfig } from '@/lib/api-server/clients/twitterClient';
 
 // Generate PKCE code verifier and challenge
 function generatePKCE(): { codeVerifier: string; codeChallenge: string } {
@@ -22,6 +22,16 @@ function generatePKCE(): { codeVerifier: string; codeChallenge: string } {
  */
 export async function POST(request: NextRequest) {
   try {
+    // Validate X configuration before proceeding
+    const configError = validateXConfig();
+    if (configError) {
+      console.error('[twitter/auth] Configuration error:', configError);
+      return NextResponse.json(
+        { error: configError },
+        { status: 500 }
+      );
+    }
+
     // Generate state for CSRF protection
     const state = crypto.randomBytes(16).toString('hex');
 
@@ -30,6 +40,8 @@ export async function POST(request: NextRequest) {
 
     // Get authorization URL
     const authUrl = getAuthUrl(state, codeChallenge);
+
+    console.log('[twitter/auth] Generated auth URL, redirecting user to X OAuth');
 
     // Return auth URL and state/verifier (client should store in session)
     return NextResponse.json({

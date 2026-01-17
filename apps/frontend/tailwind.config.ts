@@ -92,6 +92,15 @@ const config: Config = {
         'slide-up': 'slideUp 0.3s ease-out',
         'scale-in': 'scaleIn 0.2s ease-out',
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        // ASCII animations
+        'typing-cursor': 'blink 1s step-end infinite',
+        'glitch': 'glitch 0.3s ease-in-out infinite',
+        'glitch-once': 'glitch 0.3s ease-in-out',
+        'matrix-fall': 'matrixFall 5s linear infinite',
+        'glow-pulse': 'glowPulse 2s ease-in-out infinite',
+        'scanline': 'scanline 8s linear infinite',
+        'float': 'float 3s ease-in-out infinite',
+        'particle-flow': 'particleFlow 2s linear infinite',
       },
       keyframes: {
         fadeIn: {
@@ -105,6 +114,46 @@ const config: Config = {
         scaleIn: {
           '0%': { opacity: '0', transform: 'scale(0.95)' },
           '100%': { opacity: '1', transform: 'scale(1)' },
+        },
+        // ASCII keyframes
+        blink: {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0' },
+        },
+        glitch: {
+          '0%, 100%': { transform: 'translate(0)' },
+          '20%': { transform: 'translate(-2px, 2px)' },
+          '40%': { transform: 'translate(-2px, -2px)' },
+          '60%': { transform: 'translate(2px, 2px)' },
+          '80%': { transform: 'translate(2px, -2px)' },
+        },
+        matrixFall: {
+          '0%': { transform: 'translateY(-100%)' },
+          '100%': { transform: 'translateY(100vh)' },
+        },
+        glowPulse: {
+          '0%, 100%': {
+            boxShadow: '0 0 20px rgba(255, 214, 51, 0.3)',
+            borderColor: 'rgba(255, 214, 51, 0.4)',
+          },
+          '50%': {
+            boxShadow: '0 0 40px rgba(255, 214, 51, 0.6)',
+            borderColor: 'rgba(255, 214, 51, 0.8)',
+          },
+        },
+        scanline: {
+          '0%': { transform: 'translateY(-100%)' },
+          '100%': { transform: 'translateY(100%)' },
+        },
+        float: {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-10px)' },
+        },
+        particleFlow: {
+          '0%': { transform: 'translateX(0)', opacity: '0' },
+          '10%': { opacity: '1' },
+          '90%': { opacity: '1' },
+          '100%': { transform: 'translateX(100px)', opacity: '0' },
         },
       },
       borderRadius: {

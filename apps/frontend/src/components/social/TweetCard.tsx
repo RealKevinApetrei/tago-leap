@@ -1,5 +1,6 @@
 'use client';
 
+import { motion } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
 
 export type TweetCategory = 'ai' | 'meme' | 'defi' | 'l1' | 'gaming' | 'infrastructure' | 'other';
@@ -148,19 +149,25 @@ export function TweetCard({
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 mt-3">
-            <button
+            <motion.button
               onClick={() => onBullish?.(tweet)}
               className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-green-500/20 text-green-400 hover:bg-green-500/30 transition-colors"
+              whileHover={{ scale: 1.02, y: -1 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ duration: 0.15 }}
             >
               Bullish
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               onClick={() => onBearish?.(tweet)}
               className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+              whileHover={{ scale: 1.02, y: -1 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ duration: 0.15 }}
             >
               Bearish
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               onClick={() => onSelect?.(tweet)}
               className={`
                 flex-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors
@@ -169,9 +176,18 @@ export function TweetCard({
                   : 'bg-white/[0.08] text-white/70 hover:bg-white/[0.12] hover:text-white'
                 }
               `}
+              whileHover={{ scale: 1.02, y: -1 }}
+              whileTap={{ scale: 0.98 }}
+              animate={isSelected ? {
+                boxShadow: ['0 0 0 rgba(232, 255, 0, 0)', '0 0 15px rgba(232, 255, 0, 0.3)', '0 0 0 rgba(232, 255, 0, 0)'],
+              } : {}}
+              transition={{
+                duration: 0.15,
+                boxShadow: { duration: 1.5, repeat: isSelected ? Infinity : 0 }
+              }}
             >
               {isSelected ? 'Selected' : 'Select'}
-            </button>
+            </motion.button>
           </div>
         </div>
       </div>
@@ -192,14 +208,31 @@ export function SelectedTweetCard({
   const categoryStyle = CATEGORY_STYLES[tweet.category];
 
   return (
-    <div className="relative p-4 bg-[#E8FF00]/10 rounded-xl border border-[#E8FF00]/30">
+    <motion.div
+      className="relative p-4 bg-[#E8FF00]/10 rounded-xl border border-[#E8FF00]/30"
+      initial={{ opacity: 0, scale: 0.95, y: 10 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95, y: -10 }}
+      transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+    >
+      {/* Glow effect */}
+      <motion.div
+        className="absolute inset-0 rounded-xl bg-[#E8FF00]/5 -z-10"
+        animate={{
+          boxShadow: ['0 0 20px rgba(232, 255, 0, 0.1)', '0 0 30px rgba(232, 255, 0, 0.2)', '0 0 20px rgba(232, 255, 0, 0.1)'],
+        }}
+        transition={{ duration: 2, repeat: Infinity }}
+      />
+
       {/* Close Button */}
-      <button
+      <motion.button
         onClick={onDeselect}
         className="absolute top-2 right-2 p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white/60 hover:text-white transition-colors"
+        whileHover={{ scale: 1.1, rotate: 90 }}
+        whileTap={{ scale: 0.9 }}
       >
         <XIcon className="w-4 h-4" />
-      </button>
+      </motion.button>
 
       <div className="flex items-start gap-3 pr-8">
         <img
@@ -216,20 +249,28 @@ export function SelectedTweetCard({
           </div>
           <p className="mt-1 text-sm text-white/70 line-clamp-2">{tweet.content}</p>
           {tweet.mentionedAssets.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-2">
-              {tweet.mentionedAssets.map((asset) => (
-                <span
+            <motion.div
+              className="flex flex-wrap gap-1 mt-2"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.1 }}
+            >
+              {tweet.mentionedAssets.map((asset, index) => (
+                <motion.span
                   key={asset}
                   className="px-1.5 py-0.5 text-xs font-medium rounded bg-[#E8FF00]/30 text-[#E8FF00]"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.15 + index * 0.05 }}
                 >
                   ${asset}
-                </span>
+                </motion.span>
               ))}
-            </div>
+            </motion.div>
           )}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 

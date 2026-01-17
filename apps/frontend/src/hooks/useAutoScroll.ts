@@ -14,8 +14,8 @@ interface UseAutoScrollOptions {
 }
 
 interface UseAutoScrollReturn {
-  /** Ref to attach to the scrollable container */
-  containerRef: React.RefObject<HTMLDivElement>;
+  /** Ref callback to attach to the scrollable container */
+  containerRef: (node: HTMLDivElement | null) => void;
   /** Whether auto-scrolling is currently active */
   isScrolling: boolean;
   /** Whether scrolling is paused (due to hover or other) */
@@ -38,11 +38,12 @@ export function useAutoScroll({
   enabled = true,
   endPauseDuration = 2000,
 }: UseAutoScrollOptions = {}): UseAutoScrollReturn {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const containerNodeRef = useRef<HTMLDivElement | null>(null);
   const animationRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
   const isPausedRef = useRef<boolean>(false);
   const isHoveringRef = useRef<boolean>(false);
+  const isEndPauseRef = useRef<boolean>(false);
 
   const [isScrolling, setIsScrolling] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -55,12 +56,13 @@ export function useAutoScroll({
 
   // Animation loop
   const animate = useCallback((timestamp: number) => {
-    if (!containerRef.current || isPausedRef.current || !enabled || prefersReducedMotion.current) {
+    const container = containerNodeRef.current;
+
+    if (!container || isPausedRef.current || !enabled || prefersReducedMotion.current || isEndPauseRef.current) {
       animationRef.current = requestAnimationFrame(animate);
       return;
     }
 
-    const container = containerRef.current;
     const maxScroll = container.scrollHeight - container.clientHeight;
 
     // Skip if nothing to scroll
@@ -87,12 +89,17 @@ export function useAutoScroll({
     if (newScroll >= maxScroll) {
       container.scrollTop = maxScroll;
       setIsScrolling(false);
+      isEndPauseRef.current = true;
 
       // Pause at end, then reset to top
       setTimeout(() => {
-        if (containerRef.current && !isPausedRef.current) {
-          containerRef.current.scrollTop = 0;
+        if (containerNodeRef.current && !isPausedRef.current) {
+          containerNodeRef.current.scrollTop = 0;
+          isEndPauseRef.current = false;
+          lastTimeRef.current = 0;
           setIsScrolling(true);
+        } else {
+          isEndPauseRef.current = false;
         }
       }, endPauseDuration);
     } else {
@@ -108,41 +115,51 @@ export function useAutoScroll({
     if (enabled && !prefersReducedMotion.current) {
       lastTimeRef.current = 0;
       animationRef.current = requestAnimationFrame(animate);
+    } else {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
     }
 
     return () => {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
       }
     };
   }, [enabled, animate]);
 
-  // Handle hover events
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || !pauseOnHover) return;
+  // Callback ref to handle container attachment and hover events
+  const containerRef = useCallback((node: HTMLDivElement | null) => {
+    // Cleanup old node
+    if (containerNodeRef.current && pauseOnHover) {
+      const oldNode = containerNodeRef.current;
+      oldNode.removeEventListener('mouseenter', handleMouseEnter);
+      oldNode.removeEventListener('mouseleave', handleMouseLeave);
+    }
 
-    const handleMouseEnter = () => {
+    containerNodeRef.current = node;
+
+    // Setup new node
+    if (node && pauseOnHover) {
+      node.addEventListener('mouseenter', handleMouseEnter);
+      node.addEventListener('mouseleave', handleMouseLeave);
+    }
+
+    function handleMouseEnter() {
       isHoveringRef.current = true;
       isPausedRef.current = true;
       setIsPaused(true);
       setIsScrolling(false);
-    };
+    }
 
-    const handleMouseLeave = () => {
+    function handleMouseLeave() {
       isHoveringRef.current = false;
       isPausedRef.current = false;
       setIsPaused(false);
       lastTimeRef.current = 0; // Reset time for smooth resume
-    };
-
-    container.addEventListener('mouseenter', handleMouseEnter);
-    container.addEventListener('mouseleave', handleMouseLeave);
-
-    return () => {
-      container.removeEventListener('mouseenter', handleMouseEnter);
-      container.removeEventListener('mouseleave', handleMouseLeave);
-    };
+    }
   }, [pauseOnHover]);
 
   // Manual pause
@@ -163,8 +180,8 @@ export function useAutoScroll({
 
   // Scroll to position
   const scrollTo = useCallback((position: number) => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = position;
+    if (containerNodeRef.current) {
+      containerNodeRef.current.scrollTop = position;
     }
   }, []);
 

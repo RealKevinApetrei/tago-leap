@@ -1,6 +1,32 @@
 import { TwitterApi, TweetV2, UserV2 } from 'twitter-api-v2';
 import { serverEnv } from '../env';
 
+/**
+ * Validate X OAuth configuration
+ * Returns error message if invalid, null if valid
+ */
+export function validateXConfig(): string | null {
+  if (!serverEnv.X_CLIENT_ID) {
+    return 'X_CLIENT_ID is not configured. Please set it in your environment variables.';
+  }
+  if (!serverEnv.X_CLIENT_SECRET) {
+    return 'X_CLIENT_SECRET is not configured. Please set it in your environment variables.';
+  }
+  if (!serverEnv.X_CALLBACK_URL) {
+    return 'X_CALLBACK_URL is not configured. Please set it in your environment variables.';
+  }
+  // Validate callback URL format
+  try {
+    const url = new URL(serverEnv.X_CALLBACK_URL);
+    if (!url.pathname.includes('/api/twitter/auth/callback')) {
+      return `X_CALLBACK_URL should end with /api/twitter/auth/callback. Got: ${serverEnv.X_CALLBACK_URL}`;
+    }
+  } catch {
+    return `X_CALLBACK_URL is not a valid URL: ${serverEnv.X_CALLBACK_URL}`;
+  }
+  return null;
+}
+
 // Initialize Twitter client with bearer token for app-only auth
 const getAppClient = () => {
   if (!serverEnv.X_BEARER_TOKEN) {

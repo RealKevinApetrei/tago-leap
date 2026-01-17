@@ -161,6 +161,14 @@ export function useUnifiedSetup(): UseUnifiedSetupReturn {
       const response = await fetch('/api/twitter/auth', { method: 'POST' });
       const data = await response.json();
 
+      // Check for configuration errors
+      if (data.error) {
+        console.error('[useUnifiedSetup] X OAuth config error:', data.error);
+        setXError(data.error);
+        setIsConnectingX(false);
+        return;
+      }
+
       if (data.authUrl) {
         // Store verifier in cookie for callback
         document.cookie = `x_code_verifier=${data.codeVerifier}; path=/; max-age=600; SameSite=Lax`;
@@ -169,6 +177,9 @@ export function useUnifiedSetup(): UseUnifiedSetupReturn {
 
         // Redirect to Twitter
         window.location.href = data.authUrl;
+      } else {
+        setXError('Failed to get authorization URL');
+        setIsConnectingX(false);
       }
     } catch (err) {
       console.error('[useUnifiedSetup] Failed to initiate X OAuth:', err);

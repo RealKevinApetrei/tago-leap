@@ -22,6 +22,8 @@ interface TradeControlPanelProps {
   isSetupComplete?: boolean;
   isRunningSetup?: boolean;
   onConnectToTrade?: () => void;
+  /** True if only X connection is needed (setup steps 1-5 already complete) */
+  isXConnectionOnly?: boolean;
   // Asset weight management
   onUpdateWeight?: (side: 'long' | 'short', index: number, weight: number) => void;
   onRemoveAsset?: (side: 'long' | 'short', asset: string) => void;
@@ -46,6 +48,7 @@ export function TradeControlPanel({
   isSetupComplete = false,
   isRunningSetup = false,
   onConnectToTrade,
+  isXConnectionOnly = false,
   onUpdateWeight,
   onRemoveAsset,
   todayNotional = 0,
@@ -179,7 +182,12 @@ export function TradeControlPanel({
             {isRunningSetup ? (
               <span className="flex items-center gap-2">
                 <LoadingSpinner />
-                Setting up...
+                {isXConnectionOnly ? 'Connecting...' : 'Setting up...'}
+              </span>
+            ) : isXConnectionOnly ? (
+              <span className="flex items-center gap-2">
+                Connect to
+                <XLogoIcon className="w-5 h-5" />
               </span>
             ) : (
               'Connect to Trade'
@@ -262,7 +270,11 @@ export function TradeControlPanel({
               disabled={isRunningSetup}
               className="h-10 px-4 text-sm font-semibold bg-[#E8FF00] text-black hover:bg-[#d4eb00]"
             >
-              {isRunningSetup ? '...' : 'Connect'}
+              {isRunningSetup ? '...' : isXConnectionOnly ? (
+                <XLogoIcon className="w-4 h-4" />
+              ) : (
+                'Connect'
+              )}
             </Button>
           ) : (
             <Button
@@ -527,6 +539,14 @@ function CheckIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+    </svg>
+  );
+}
+
+function XLogoIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
     </svg>
   );
 }

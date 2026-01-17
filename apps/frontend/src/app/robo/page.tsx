@@ -580,139 +580,53 @@ export default function RoboPage() {
     );
   }
 
-  // One-Click Setup: Unified flow for all onboarding steps
-  // Shows when connected but setup is not complete
+  // Setup incomplete banner - shows a simple message instead of auto-executing setup
+  // Users should complete setup on the homepage first
   if (isConnected && !setupComplete) {
-    // Helper function to get step icon based on status
-    const getStepIcon = (step: SetupStep, index: number) => {
-      if (step.status === 'completed') {
-        return (
-          <div className="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center">
-            <svg className="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-        );
-      }
-      if (step.status === 'in_progress') {
-        return (
-          <div className="w-6 h-6 rounded-full bg-tago-yellow-400/20 flex items-center justify-center">
-            <div className="w-3 h-3 rounded-full border-2 border-tago-yellow-400 border-t-transparent animate-spin" />
-          </div>
-        );
-      }
-      if (step.status === 'error') {
-        return (
-          <div className="w-6 h-6 rounded-full bg-red-500/20 flex items-center justify-center">
-            <svg className="w-3.5 h-3.5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </div>
-        );
-      }
-      // Pending
-      return (
-        <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center">
-          <span className="text-xs text-white/40 font-medium">{index + 1}</span>
-        </div>
-      );
-    };
+    const completedCount = setupSteps.filter(s => s.status === 'completed').length;
 
     return (
       <div className="max-w-lg mx-auto px-4 py-8 space-y-6">
-        <SwapPanel title="Complete Setup" subtitle="One-time setup to start trading">
-          {/* Progress Steps */}
-          <div className="space-y-3">
-            {setupSteps.map((step, idx) => (
+        <SwapPanel title="Setup Required" subtitle="Complete setup to start trading">
+          <div className="space-y-4">
+            {/* Progress indicator */}
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-white/60">Setup Progress</span>
+              <span className="text-white/80 font-mono">{completedCount}/{setupSteps.length}</span>
+            </div>
+
+            {/* Progress bar */}
+            <div className="h-2 bg-white/10 rounded-full overflow-hidden">
               <div
-                key={step.id}
-                className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
-                  step.status === 'in_progress'
-                    ? 'bg-tago-yellow-400/5 border border-tago-yellow-400/20'
-                    : step.status === 'completed'
-                    ? 'bg-green-500/5'
-                    : step.status === 'error'
-                    ? 'bg-red-500/5 border border-red-500/20'
-                    : 'bg-white/[0.02]'
-                }`}
-              >
-                {getStepIcon(step, idx)}
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium ${
-                    step.status === 'completed' ? 'text-green-400' :
-                    step.status === 'in_progress' ? 'text-tago-yellow-400' :
-                    step.status === 'error' ? 'text-red-400' :
-                    'text-white/60'
-                  }`}>
+                className="h-full bg-tago-yellow-400 transition-all duration-300"
+                style={{ width: `${(completedCount / setupSteps.length) * 100}%` }}
+              />
+            </div>
+
+            {/* Steps summary */}
+            <div className="space-y-2">
+              {setupSteps.map((step) => (
+                <div key={step.id} className="flex items-center gap-2 text-xs">
+                  <span className={step.status === 'completed' ? 'text-green-400' : 'text-white/40'}>
+                    {step.status === 'completed' ? '✓' : '○'}
+                  </span>
+                  <span className={step.status === 'completed' ? 'text-white/60' : 'text-white/40'}>
                     {step.label}
-                  </p>
-                  {step.status === 'in_progress' && (
-                    <p className="text-xs text-white/40 mt-0.5">{step.description}</p>
-                  )}
-                  {step.status === 'error' && (
-                    <p className="text-xs text-red-400/70 mt-0.5">
-                      {step.error?.includes('rejected') || step.error?.includes('denied')
-                        ? 'Signature cancelled - click below to try again'
-                        : step.error || (
-                          step.id === 'auth'
-                          ? 'Couldn\'t sign in - click below to try again'
-                          : step.id === 'agentWallet'
-                          ? 'Couldn\'t create wallet - click below to retry'
-                          : step.id === 'agentApproval'
-                          ? 'Approval failed - click below to retry'
-                          : step.id === 'builderFee'
-                          ? 'Fee approval failed - click below to retry'
-                          : step.id === 'saltAccount'
-                          ? 'Account creation failed - click below to retry'
-                          : 'Something went wrong - click below to retry'
-                        )
-                      }
-                    </p>
-                  )}
-                  {/* Deposit warning for Hyperliquid step */}
-                  {step.id === 'agentApproval' && step.status !== 'completed' && hlBalance !== null && hlBalance.availableBalance === 0 && (
-                    <div className="mt-2 flex items-center gap-2">
-                      <span className="text-xs text-yellow-400/70">Requires USDC deposit</span>
-                      <button
-                        onClick={openDeposit}
-                        className="text-xs text-tago-yellow-400 hover:underline"
-                      >
-                        Deposit →
-                      </button>
-                    </div>
-                  )}
+                  </span>
                 </div>
-                {step.status === 'in_progress' && (
-                  <span className="text-xs text-tago-yellow-400/60">Waiting for signature...</span>
-                )}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
 
-          {/* Action Button */}
-          <Button
-            variant="yellow"
-            fullWidth
-            size="lg"
-            onClick={() => {
-              if (setupError) {
-                resetSetup();
-              }
-              startSetup();
-            }}
-            loading={setupRunning}
-          >
-            {setupRunning
-              ? `${setupCurrentStep?.label || 'Processing'}...`
-              : setupError
-              ? 'Retry Setup'
-              : 'Complete Setup'
-            }
-          </Button>
+            {/* Action */}
+            <a
+              href="/"
+              className="block w-full py-3 text-center bg-tago-yellow-400 text-black font-medium rounded-lg hover:bg-tago-yellow-300 transition-colors"
+            >
+              Complete Setup
+            </a>
 
-          <div className="text-center">
-            <p className="text-xs text-white/40">
-              This is a one-time setup. You'll sign 3 messages to enable trading.
+            <p className="text-center text-xs text-white/30">
+              Return to homepage to complete your account setup
             </p>
           </div>
         </SwapPanel>

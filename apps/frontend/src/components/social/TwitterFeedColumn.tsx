@@ -1,8 +1,10 @@
 'use client';
 
+import { motion, AnimatePresence } from 'framer-motion';
 import { TweetCard, type CryptoTweet, type TweetCategory } from './TweetCard';
 import { ColumnHeader } from './SocialTradingLayout';
 import { useAutoScroll } from '@/hooks/useAutoScroll';
+import { ASCIILoader } from '@/components/ascii';
 
 interface TwitterFeedColumnProps {
   title: string;
@@ -41,7 +43,7 @@ export function TwitterFeedColumn({
   } = useAutoScroll({
     speed: scrollSpeed,
     pauseOnHover: true,
-    enabled: autoScroll && filteredTweets.length > 3,
+    enabled: autoScroll && filteredTweets.length > 1,
   });
 
   return (
@@ -52,7 +54,7 @@ export function TwitterFeedColumn({
         action={
           <div className="flex items-center gap-2">
             {/* Paused indicator */}
-            {autoScroll && isPaused && filteredTweets.length > 3 && (
+            {autoScroll && isPaused && filteredTweets.length > 1 && (
               <span className="text-[10px] text-white/30 px-1.5 py-0.5 bg-white/[0.05] rounded">
                 Paused
               </span>
@@ -73,7 +75,7 @@ export function TwitterFeedColumn({
       <div className="absolute top-[44px] left-0 right-0 h-6 bg-gradient-to-b from-[#0a0a0a] to-transparent z-10 pointer-events-none" />
 
       <div
-        ref={containerRef as React.RefObject<HTMLDivElement>}
+        ref={containerRef}
         className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent"
       >
         {isLoading ? (
@@ -82,16 +84,30 @@ export function TwitterFeedColumn({
           <EmptyState category={category} />
         ) : (
           <div className="divide-y divide-white/[0.06] pt-2">
-            {filteredTweets.map((tweet) => (
-              <TweetCard
-                key={tweet.id}
-                tweet={tweet}
-                isSelected={tweet.id === selectedTweetId}
-                onBullish={onBullish}
-                onBearish={onBearish}
-                onSelect={onSelect}
-              />
-            ))}
+            <AnimatePresence mode="popLayout">
+              {filteredTweets.map((tweet, index) => (
+                <motion.div
+                  key={tweet.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{
+                    duration: 0.3,
+                    delay: index * 0.05,
+                    ease: [0.25, 0.1, 0.25, 1],
+                  }}
+                  whileHover={{ backgroundColor: 'rgba(255, 255, 255, 0.02)' }}
+                >
+                  <TweetCard
+                    tweet={tweet}
+                    isSelected={tweet.id === selectedTweetId}
+                    onBullish={onBullish}
+                    onBearish={onBearish}
+                    onSelect={onSelect}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         )}
       </div>
@@ -104,24 +120,34 @@ export function TwitterFeedColumn({
 
 function LoadingState() {
   return (
-    <div className="space-y-4 p-4">
-      {[1, 2, 3].map((i) => (
-        <div key={i} className="animate-pulse">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-full bg-white/10" />
+    <div className="flex flex-col items-center justify-center h-full py-12 px-6">
+      <ASCIILoader
+        variant="dots"
+        size="lg"
+        color="yellow"
+        text="Loading tweets..."
+      />
+      <div className="mt-6 space-y-3 w-full max-w-xs">
+        {[1, 2, 3].map((i) => (
+          <motion.div
+            key={i}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0.3, 0.6, 0.3] }}
+            transition={{
+              duration: 1.5,
+              repeat: Infinity,
+              delay: i * 0.2,
+            }}
+            className="flex items-start gap-3"
+          >
+            <div className="w-8 h-8 rounded-full bg-white/10" />
             <div className="flex-1 space-y-2">
-              <div className="h-4 bg-white/10 rounded w-1/3" />
-              <div className="h-3 bg-white/10 rounded w-full" />
-              <div className="h-3 bg-white/10 rounded w-2/3" />
-              <div className="flex gap-2 mt-3">
-                <div className="h-8 bg-white/10 rounded flex-1" />
-                <div className="h-8 bg-white/10 rounded flex-1" />
-                <div className="h-8 bg-white/10 rounded flex-1" />
-              </div>
+              <div className="h-3 bg-white/10 rounded w-1/2" />
+              <div className="h-2 bg-white/10 rounded w-full" />
             </div>
-          </div>
-        </div>
-      ))}
+          </motion.div>
+        ))}
+      </div>
     </div>
   );
 }
