@@ -1,4 +1,5 @@
 import { config } from './config';
+import { TradeError, TradeErrorCode, ERROR_MESSAGES } from '@tago-leap/shared/types';
 
 // Generic API response type
 interface ApiResponse<T> {
@@ -10,23 +11,138 @@ interface ApiResponse<T> {
   };
 }
 
-// API fetch helper
-async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-  });
+// Custom error class that includes error code
+export class ApiError extends Error {
+  public code: string;
+  public tradeError?: TradeError;
 
-  const result: ApiResponse<T> = await response.json();
+  constructor(message: string, code: string = 'UNKNOWN', tradeError?: TradeError) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.tradeError = tradeError;
+  }
+}
 
-  if (!result.success || !result.data) {
-    throw new Error(result.error?.message || 'API request failed');
+// Map backend error codes to TradeErrorCode
+function mapToTradeError(code: string, message: string): TradeError {
+  // Check if it's already a valid TradeErrorCode
+  if (Object.values(TradeErrorCode).includes(code as TradeErrorCode)) {
+    const tradeCode = code as TradeErrorCode;
+    const template = ERROR_MESSAGES[tradeCode];
+    return {
+      code: tradeCode,
+      message: template?.message || message,
+      action: template?.action,
+      actionUrl: template?.actionUrl,
+      technicalMessage: message,
+    };
   }
 
-  return result.data;
+  // Map common error patterns to TradeErrorCode
+  const lowerMessage = message.toLowerCase();
+
+  if (code === 'POLICY_VIOLATION') {
+    if (lowerMessage.includes('leverage')) {
+      return createTradeError(TradeErrorCode.LEVERAGE_EXCEEDED, message);
+    }
+    if (lowerMessage.includes('notional') || lowerMessage.includes('daily')) {
+      return createTradeError(TradeErrorCode.DAILY_NOTIONAL_EXCEEDED, message);
+    }
+    if (lowerMessage.includes('asset') || lowerMessage.includes('pair')) {
+      return createTradeError(TradeErrorCode.ASSET_NOT_ALLOWED, message);
+    }
+    if (lowerMessage.includes('drawdown')) {
+      return createTradeError(TradeErrorCode.DRAWDOWN_LIMIT_REACHED, message);
+    }
+  }
+
+  if (lowerMessage.includes('insufficient') || lowerMessage.includes('balance')) {
+    return createTradeError(TradeErrorCode.INSUFFICIENT_BALANCE, message);
+  }
+  if (lowerMessage.includes('margin')) {
+    return createTradeError(TradeErrorCode.INSUFFICIENT_MARGIN, message);
+  }
+  if (lowerMessage.includes('authenticate') || lowerMessage.includes('sign in') || lowerMessage.includes('unauthorized')) {
+    return createTradeError(TradeErrorCode.NOT_AUTHENTICATED, message);
+  }
+  if (lowerMessage.includes('agent wallet') && lowerMessage.includes('missing')) {
+    return createTradeError(TradeErrorCode.AGENT_WALLET_MISSING, message);
+  }
+  if (lowerMessage.includes('agent wallet') && lowerMessage.includes('approved')) {
+    return createTradeError(TradeErrorCode.AGENT_WALLET_NOT_APPROVED, message);
+  }
+  if (lowerMessage.includes('builder fee')) {
+    return createTradeError(TradeErrorCode.BUILDER_FEE_NOT_APPROVED, message);
+  }
+  if (lowerMessage.includes('slippage')) {
+    return createTradeError(TradeErrorCode.SLIPPAGE_EXCEEDED, message);
+  }
+  if (lowerMessage.includes('rejected')) {
+    return createTradeError(TradeErrorCode.TRADE_REJECTED, message);
+  }
+  if (lowerMessage.includes('timeout')) {
+    return createTradeError(TradeErrorCode.TIMEOUT, message);
+  }
+  if (lowerMessage.includes('hyperliquid')) {
+    return createTradeError(TradeErrorCode.HYPERLIQUID_ERROR, message);
+  }
+  if (lowerMessage.includes('network') || lowerMessage.includes('fetch')) {
+    return createTradeError(TradeErrorCode.NETWORK_ERROR, message);
+  }
+
+  // Default to generic execution error
+  return createTradeError(TradeErrorCode.TRADE_REJECTED, message);
+}
+
+function createTradeError(code: TradeErrorCode, technicalMessage: string): TradeError {
+  const template = ERROR_MESSAGES[code];
+  return {
+    code,
+    message: template.message,
+    action: template.action,
+    actionUrl: template.actionUrl,
+    technicalMessage,
+  };
+}
+
+// API fetch helper with enhanced error handling
+async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+    });
+
+    const result: ApiResponse<T> = await response.json();
+
+    if (!result.success || !result.data) {
+      const errorCode = result.error?.code || 'UNKNOWN';
+      const errorMessage = result.error?.message || 'API request failed';
+      const tradeError = mapToTradeError(errorCode, errorMessage);
+      throw new ApiError(errorMessage, errorCode, tradeError);
+    }
+
+    return result.data;
+  } catch (error) {
+    // Re-throw ApiError as-is
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    // Handle network errors
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      const tradeError = createTradeError(TradeErrorCode.NETWORK_ERROR, error.message);
+      throw new ApiError('Network connection failed', 'NETWORK_ERROR', tradeError);
+    }
+
+    // Wrap other errors
+    const message = error instanceof Error ? error.message : String(error);
+    throw new ApiError(message, 'UNKNOWN');
+  }
 }
 
 // Pear API types

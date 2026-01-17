@@ -169,11 +169,7 @@ export function useBuilderFee(): UseBuilderFeeReturn {
           nonce: nonce,
         },
         nonce: nonce,
-        signature: {
-          r: signature.slice(0, 66),
-          s: '0x' + signature.slice(66, 130),
-          v: parseInt(signature.slice(130, 132), 16),
-        },
+        signature,
       };
 
       console.log('[useBuilderFee] Request body:', JSON.stringify(requestBody, null, 2));

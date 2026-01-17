@@ -1,14 +1,17 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useAccount } from 'wagmi';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { SwapPanel, SwapField, SwapDivider } from '@/components/ui/SwapPanel';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
-import { lifiApi } from '@/lib/api';
-
-// HyperEVM USDC address
-const HYPEREVM_USDC = '0xb88339CB7199b77E23DB6E890353E22632Ba630f';
+import { Card } from '@/components/ui/Card';
+import { lifiApi, ApiError } from '@/lib/api';
+import { TradeErrorDisplay, parseApiErrorToTradeError } from '@/components/TradeErrorDisplay';
+import type { TradeError } from '@tago-leap/shared/types';
 
 interface ChainOption {
   chainId: number;
@@ -20,30 +23,71 @@ interface ChainOption {
   }[];
 }
 
-interface SaltWallet {
-  userWalletAddress: string;
-  saltWalletAddress: string;
-  exists: boolean;
+interface RouteStep {
+  stepIndex: number;
+  type: string;
+  action: string;
+  tool: string;
+  toolName: string;
+  fromChainName: string;
+  toChainName: string;
+  fromTokenSymbol: string;
+  toTokenSymbol: string;
+  estimatedDurationSeconds: number;
+  fees: {
+    gasCostUsd: string;
+    protocolFeeUsd: string;
+  };
 }
 
-type FlowStatus = 'idle' | 'quoting' | 'signing' | 'bridging' | 'completed' | 'failed';
+interface QuoteResponse {
+  id: string;
+  status: string | null;
+  recommended: {
+    routeId: string;
+    fromAmountFormatted: string;
+    toAmountFormatted: string;
+    toAmountUsd: string;
+    estimatedDurationSeconds: number;
+    estimatedDurationFormatted: string;
+    exchangeRate: string;
+    fees: {
+      gasCostUsd: string;
+      protocolFeeUsd: string;
+      totalFeeUsd: string;
+    };
+    steps: RouteStep[];
+    tags?: string[];
+  };
+  alternatives: any[];
+  routeCount: number;
+  saltWalletAddress?: string;
+}
+
+type DestinationType = 'hyperliquid' | 'salt';
 
 export default function OnboardPage() {
+  const searchParams = useSearchParams();
+  const { address, isConnected } = useAccount();
+
+  // Destination from query param (default to hyperliquid)
+  const destinationParam = searchParams.get('destination') as DestinationType | null;
+  const destination: DestinationType = destinationParam === 'salt' ? 'salt' : 'hyperliquid';
+
   const [options, setOptions] = useState<ChainOption[]>([]);
   const [loading, setLoading] = useState(false);
-  const [flowStatus, setFlowStatus] = useState<FlowStatus>('idle');
-  const [quote, setQuote] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  // Salt wallet state
-  const [saltWallet, setSaltWallet] = useState<SaltWallet | null>(null);
-  const [saltLoading, setSaltLoading] = useState(false);
+  const [quoting, setQuoting] = useState(false);
+  const [quote, setQuote] = useState<QuoteResponse | null>(null);
+  const [error, setError] = useState<TradeError | null>(null);
+  const [success, setSuccess] = useState(false);
 
   // Form state
   const [fromChain, setFromChain] = useState('');
   const [fromToken, setFromToken] = useState('');
   const [amount, setAmount] = useState('');
-  const [walletAddress, setWalletAddress] = useState('');
+
+  // Use connected wallet address
+  const walletAddress = address || '';
 
   // Load options on mount
   useEffect(() => {
@@ -60,7 +104,11 @@ export default function OnboardPage() {
         }
       } catch (err) {
         console.error('Failed to load options:', err);
-        setError('Failed to load supported chains');
+        if (err instanceof ApiError && err.tradeError) {
+          setError(err.tradeError);
+        } else {
+          setError(parseApiErrorToTradeError(err));
+        }
       } finally {
         setLoading(false);
       }
@@ -109,146 +157,174 @@ export default function OnboardPage() {
 
   const handleGetQuote = async () => {
     if (!walletAddress || !fromChain || !fromToken || !amount) {
-      setError('Please fill in all fields');
       return;
     }
 
-    if (!selectedToken) {
-      setError('Please select a token');
-      return;
-    }
-
-    setFlowStatus('quoting');
+    setQuoting(true);
     setError(null);
     setQuote(null);
 
     try {
-      const amountInSmallestUnit = parseAmount(amount, selectedToken.decimals);
-
+      // Get quote with deposit destination preference
       const result = await lifiApi.getQuote({
         userWalletAddress: walletAddress,
         fromChainId: parseInt(fromChain),
         fromTokenAddress: fromToken,
-        amount: amountInSmallestUnit,
-        toTokenAddress: HYPEREVM_USDC,
-        depositToSaltWallet: true,
+        amount,
+        toTokenAddress: '0x0000000000000000000000000000000000000000', // Native USDC on HyperEVM
+        // depositToSaltWallet: destination === 'salt', // Uncomment when API supports this
       });
       setQuote(result);
       setFlowStatus('idle');
     } catch (err) {
       console.error('Failed to get quote:', err);
-      setError(err instanceof Error ? err.message : 'Failed to get quote. Please try again.');
-      setFlowStatus('failed');
+      if (err instanceof ApiError && err.tradeError) {
+        setError(err.tradeError);
+      } else {
+        setError(parseApiErrorToTradeError(err));
+      }
+    } finally {
+      setQuoting(false);
     }
   };
 
   const handleSwap = async () => {
     if (!quote) return;
 
-    setFlowStatus('signing');
+    setLoading(true);
     setError(null);
 
     try {
-      // In a real implementation, you would:
-      // 1. Get the transaction data from the quote
-      // 2. Sign and send the transaction using the user's wallet
-      // 3. Track the transaction
-
-      // For now, simulate the flow
-      setFlowStatus('bridging');
-
-      // Track the onboarding (would include real tx hash)
-      await lifiApi.trackOnboarding({
-        flowId: quote.id,
-        txHashes: ['0x...'], // Would be real tx hash
-      });
-
-      // After bridge completes, initiate deposit
       await lifiApi.deposit({ flowId: quote.id });
-
-      setFlowStatus('completed');
-
-      // Reset after success
-      setTimeout(() => {
-        setQuote(null);
-        setAmount('');
-        setFlowStatus('idle');
-      }, 3000);
+      setSuccess(true);
+      setQuote(null);
+      setAmount('');
     } catch (err) {
-      console.error('Failed to execute swap:', err);
-      setError(err instanceof Error ? err.message : 'Swap failed. Please try again.');
-      setFlowStatus('failed');
+      console.error('Failed to deposit:', err);
+      if (err instanceof ApiError && err.tradeError) {
+        setError(err.tradeError);
+      } else {
+        setError(parseApiErrorToTradeError(err));
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getStatusBadge = () => {
-    switch (flowStatus) {
-      case 'quoting':
-        return <Badge variant="yellow">Getting Quote...</Badge>;
-      case 'signing':
-        return <Badge variant="yellow">Waiting for Signature...</Badge>;
-      case 'bridging':
-        return <Badge variant="yellow">Bridging...</Badge>;
-      case 'completed':
-        return <Badge variant="success">Completed!</Badge>;
-      case 'failed':
-        return <Badge variant="error">Failed</Badge>;
-      default:
-        return quote ? <Badge variant="success">{quote.status}</Badge> : null;
+  const handleRetry = () => {
+    setError(null);
+    if (quote) {
+      handleDeposit();
+    } else {
+      handleGetQuote();
     }
   };
 
-  const isLoading = flowStatus === 'quoting' || flowStatus === 'signing' || flowStatus === 'bridging';
+  // If not connected, show connect prompt
+  if (!isConnected) {
+    return (
+      <div className="space-y-6">
+        <SwapPanel title="Deposit to Hyperliquid" subtitle="Bridge assets from any chain">
+          <div className="bg-white/[0.03] rounded-xl p-6 border border-white/[0.08] text-center space-y-4">
+            <div className="w-12 h-12 mx-auto rounded-full bg-tago-yellow-400/10 flex items-center justify-center">
+              <svg className="w-6 h-6 text-tago-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-white font-medium mb-1">Connect Your Wallet</h3>
+              <p className="text-sm text-white/50 font-light">
+                Connect your wallet to bridge assets to Hyperliquid for trading.
+              </p>
+            </div>
+            <ConnectButton />
+          </div>
+        </SwapPanel>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <SwapPanel title="Deposit to Hyperliquid" subtitle="Bridge assets from any chain">
-        {/* Wallet Address */}
-        <div className="space-y-2">
-          <label className="block text-sm font-light text-white/70">
-            Wallet Address
-          </label>
-          <input
-            type="text"
-            value={walletAddress}
-            onChange={(e) => setWalletAddress(e.target.value)}
-            placeholder="0x..."
-            className="w-full px-4 py-3 bg-white/[0.03] border border-white/[0.08] rounded-xl text-white placeholder-white/40 font-light transition-all duration-200 focus:border-tago-yellow-400 focus:ring-2 focus:ring-tago-yellow-400/15 hover:border-white/15"
-          />
-        </div>
-
-        {/* Salt Wallet Display */}
-        {saltLoading && (
-          <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08]">
-            <div className="flex items-center gap-2 text-white/40">
-              <div className="animate-spin h-4 w-4 border-2 border-white/20 border-t-tago-yellow-400 rounded-full" />
-              <span className="text-sm font-light">Checking Salt account...</span>
-            </div>
+      {/* Connected wallet header */}
+      <Card>
+        <div className="p-4 flex items-center justify-between">
+          <div>
+            <span className="text-xs text-white/40 font-light">Connected Wallet</span>
+            <p className="text-sm text-white font-mono">{walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}</p>
           </div>
-        )}
+          <ConnectButton.Custom>
+            {({ openAccountModal }) => (
+              <button onClick={openAccountModal} className="text-xs text-white/40 hover:text-white">
+                Change
+              </button>
+            )}
+          </ConnectButton.Custom>
+        </div>
+      </Card>
 
-        {saltWallet && !saltLoading && (
-          <div className="bg-white/[0.03] rounded-xl p-4 border border-tago-yellow-400/30">
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-sm text-white/40 font-light">Salt Account</span>
-              <Badge variant={saltWallet.exists ? 'success' : 'yellow'}>
-                {saltWallet.exists ? 'Active' : 'New'}
-              </Badge>
+      {/* Success message */}
+      {success && (
+        <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center">
+              <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
             </div>
-            <div className="text-sm text-white/70 font-mono break-all">
-              {saltWallet.saltWalletAddress}
+            <div className="flex-1">
+              <p className="text-sm text-green-400 font-medium">Deposit initiated successfully!</p>
+              <p className="text-xs text-green-400/60 mt-0.5">
+                Your funds are being bridged to Hyperliquid. This may take a few minutes.
+              </p>
             </div>
-            <p className="text-xs text-white/40 mt-2 font-light">
-              Funds will be deposited to this policy-controlled account
+            <Button variant="ghost" size="sm" onClick={() => setSuccess(false)}>
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <SwapPanel
+        title="Deposit to Hyperliquid"
+        subtitle={destination === 'salt'
+          ? 'Bridge assets to your Salt robo trading account'
+          : 'Bridge assets to your Hyperliquid trading account'
+        }
+      >
+        {/* Destination indicator */}
+        <div className="bg-white/[0.02] rounded-lg p-3 border border-white/[0.05] flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-tago-yellow-400/10 flex items-center justify-center flex-shrink-0">
+            {destination === 'salt' ? (
+              <svg className="w-4 h-4 text-tago-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10 2a1 1 0 011 1v1.323l3.954 1.582 1.599-.8a1 1 0 01.894 1.79l-1.233.616 1.738 5.42a1 1 0 01-.285 1.05A3.989 3.989 0 0115 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.715-5.349L11 6.477V16h2a1 1 0 110 2H7a1 1 0 110-2h2V6.477L6.237 7.582l1.715 5.349a1 1 0 01-.285 1.05A3.989 3.989 0 015 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.738-5.42-1.233-.617a1 1 0 01.894-1.788l1.599.799L9 4.323V3a1 1 0 011-1z" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4 text-tago-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+              </svg>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-white font-medium">
+              {destination === 'salt' ? 'Salt Robo Account' : 'Hyperliquid Account'}
+            </p>
+            <p className="text-xs text-white/40 truncate">
+              {destination === 'salt'
+                ? 'Funds will be managed by automated strategies'
+                : `Funds will be available for trading at ${walletAddress.slice(0, 10)}...`
+              }
             </p>
           </div>
-        )}
+        </div>
 
-        {/* Error Display */}
+        {/* Error display */}
         {error && (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
-            <p className="text-sm text-red-400">{error}</p>
-          </div>
+          <TradeErrorDisplay
+            error={error}
+            onRetry={handleRetry}
+            onDismiss={() => setError(null)}
+          />
         )}
 
         {/* From Chain */}
@@ -311,144 +387,77 @@ export default function OnboardPage() {
         {/* To (HyperEVM) */}
         <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08]">
           <div className="flex justify-between items-center">
-            <span className="text-sm text-white/40 font-light">Receive on HyperEVM</span>
+            <span className="text-sm text-white/40 font-light">Receive on Hyperliquid</span>
             <Badge variant="yellow">HyperEVM</Badge>
           </div>
           <div className="mt-2 text-2xl font-light text-white">
             {quote?.recommended?.toAmountFormatted || amount || '0.0'} USDC
+            {quote?.recommended?.toAmountFormatted || amount || '0.0'} USDC
           </div>
-          {quote?.recommended?.toAmountMin && (
-            <div className="text-xs text-white/40 mt-1">
-              Min: {quote.recommended.toAmountMin} USDC (after slippage)
-            </div>
+          {quote?.recommended?.toAmountUsd && (
+            <p className="text-xs text-white/40 mt-1">~${quote.recommended.toAmountUsd}</p>
           )}
         </div>
 
         {/* Quote Details */}
-        {quote && quote.recommended && (
+        {quote?.recommended && (
           <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08] space-y-3">
             {/* Route Info */}
             <div className="flex justify-between text-sm">
-              <span className="text-white/40 font-light">Route</span>
-              <span className="text-white font-light">
-                {quote.recommended.steps?.map((s: any) => s.toolName).join(' → ') || 'Direct'}
-              </span>
+              <span className="text-white/40 font-light">Exchange Rate</span>
+              <span className="text-white font-light">{quote.recommended.exchangeRate}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-white/40 font-light">Estimated Time</span>
+              <span className="text-white font-light">{quote.recommended.estimatedDurationFormatted}</span>
             </div>
 
             {/* ETA */}
             <div className="flex justify-between text-sm">
-              <span className="text-white/40 font-light">Estimated Time</span>
-              <span className="text-white font-light">
-                {quote.recommended.estimatedDurationFormatted || '~3 seconds'}
-              </span>
+              <span className="text-white/40 font-light">Gas Cost</span>
+              <span className="text-white font-light">${quote.recommended.fees.gasCostUsd}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-white/40 font-light">Protocol Fee</span>
+              <span className="text-white font-light">${quote.recommended.fees.protocolFeeUsd}</span>
+            </div>
+            <div className="flex justify-between text-sm pt-2 border-t border-white/[0.08]">
+              <span className="text-white/60 font-medium">Total Fees</span>
+              <span className="text-tago-yellow-400 font-medium">${quote.recommended.fees.totalFeeUsd}</span>
             </div>
 
-            {/* Gas Cost */}
-            {quote.recommended.fees?.gasCostUsd && (
-              <div className="flex justify-between text-sm">
-                <span className="text-white/40 font-light">Gas Cost</span>
-                <span className="text-white font-light">${quote.recommended.fees.gasCostUsd}</span>
-              </div>
+            {/* Route steps */}
+            {quote.recommended.steps && quote.recommended.steps.length > 0 && (
+              <details className="group mt-2">
+                <summary className="text-xs text-white/40 cursor-pointer hover:text-white/60 flex items-center gap-1">
+                  <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                  Route details ({quote.recommended.steps.length} steps)
+                </summary>
+                <div className="mt-2 space-y-2">
+                  {quote.recommended.steps.map((step, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-white/40">
+                        {step.stepIndex}
+                      </span>
+                      <span className="text-white/60">{step.action}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
             )}
 
-            {/* Protocol Fee */}
-            {quote.recommended.fees?.protocolFeeUsd && (
-              <div className="flex justify-between text-sm">
-                <span className="text-white/40 font-light">Protocol Fee</span>
-                <span className="text-white font-light">${quote.recommended.fees.protocolFeeUsd}</span>
-              </div>
-            )}
-
-            {/* Total Fee */}
-            {quote.recommended.fees?.totalFeeUsd && (
-              <div className="flex justify-between text-sm border-t border-white/10 pt-2">
-                <span className="text-white/40 font-light">Total Fee</span>
-                <span className="text-white font-light">${quote.recommended.fees.totalFeeUsd}</span>
-              </div>
-            )}
-
-            {/* Tags */}
+            {/* Route tags */}
             {quote.recommended.tags && quote.recommended.tags.length > 0 && (
-              <div className="flex flex-wrap gap-2 pt-2">
-                {quote.recommended.tags.map((tag: string) => (
-                  <Badge key={tag} variant="default">
+              <div className="flex flex-wrap gap-1 pt-2">
+                {quote.recommended.tags.map((tag) => (
+                  <Badge key={tag} variant={tag === 'RECOMMENDED' ? 'yellow' : 'info'}>
                     {tag}
                   </Badge>
                 ))}
               </div>
             )}
-
-            {/* Status */}
-            <div className="flex justify-between text-sm border-t border-white/10 pt-2">
-              <span className="text-white/40 font-light">Status</span>
-              {getStatusBadge()}
-            </div>
-
-            {/* Alternative Routes */}
-            {quote.alternatives && quote.alternatives.length > 0 && (
-              <div className="border-t border-white/10 pt-3">
-                <p className="text-xs text-white/40 mb-2">Alternative Routes:</p>
-                <div className="space-y-2">
-                  {quote.alternatives.slice(0, 2).map((alt: any, i: number) => (
-                    <div key={i} className="text-xs flex justify-between text-white/60">
-                      <span>{alt.toolName || 'Route ' + (i + 1)}</span>
-                      <span>{alt.toAmountFormatted} USDC (${alt.totalFeeUsd} fee)</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Progress Steps */}
-        {flowStatus !== 'idle' && flowStatus !== 'failed' && (
-          <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08]">
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
-                  flowStatus === 'quoting' ? 'bg-tago-yellow-400 text-black' :
-                  ['signing', 'bridging', 'completed'].includes(flowStatus) ? 'bg-green-500 text-white' : 'bg-white/10 text-white/40'
-                }`}>
-                  {['signing', 'bridging', 'completed'].includes(flowStatus) ? '✓' : '1'}
-                </div>
-                <span className={`text-sm ${flowStatus === 'quoting' ? 'text-white' : 'text-white/60'}`}>
-                  Get Quote
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
-                  flowStatus === 'signing' ? 'bg-tago-yellow-400 text-black' :
-                  ['bridging', 'completed'].includes(flowStatus) ? 'bg-green-500 text-white' : 'bg-white/10 text-white/40'
-                }`}>
-                  {['bridging', 'completed'].includes(flowStatus) ? '✓' : '2'}
-                </div>
-                <span className={`text-sm ${flowStatus === 'signing' ? 'text-white' : 'text-white/60'}`}>
-                  Sign Transaction
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
-                  flowStatus === 'bridging' ? 'bg-tago-yellow-400 text-black' :
-                  flowStatus === 'completed' ? 'bg-green-500 text-white' : 'bg-white/10 text-white/40'
-                }`}>
-                  {flowStatus === 'completed' ? '✓' : '3'}
-                </div>
-                <span className={`text-sm ${flowStatus === 'bridging' ? 'text-white' : 'text-white/60'}`}>
-                  Bridge to HyperEVM
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
-                  flowStatus === 'completed' ? 'bg-green-500 text-white' : 'bg-white/10 text-white/40'
-                }`}>
-                  {flowStatus === 'completed' ? '✓' : '4'}
-                </div>
-                <span className={`text-sm ${flowStatus === 'completed' ? 'text-white' : 'text-white/60'}`}>
-                  Deposit Complete
-                </span>
-              </div>
-            </div>
           </div>
         )}
 
@@ -459,52 +468,42 @@ export default function OnboardPage() {
             fullWidth
             size="lg"
             onClick={handleGetQuote}
-            loading={flowStatus === 'quoting'}
-            disabled={!walletAddress || !amount || loading}
+            loading={quoting}
+            disabled={!walletAddress || !amount || !fromChain || !fromToken}
           >
-            Get Quote
-          </Button>
-        ) : flowStatus === 'completed' ? (
-          <Button
-            variant="primary"
-            fullWidth
-            size="lg"
-            disabled
-            className="!bg-green-500 !text-white"
-          >
-            Deposit Complete!
+            {quoting ? 'Getting Quote...' : 'Get Quote'}
           </Button>
         ) : (
-          <Button
-            variant="yellow"
-            fullWidth
-            size="lg"
-            onClick={handleSwap}
-            loading={isLoading}
-            disabled={flowStatus === 'failed'}
-          >
-            {flowStatus === 'signing' ? 'Confirm in Wallet...' :
-             flowStatus === 'bridging' ? 'Bridging...' :
-             'Confirm Swap'}
-          </Button>
-        )}
-
-        {/* Reset button on failure */}
-        {flowStatus === 'failed' && (
-          <Button
-            variant="ghost"
-            fullWidth
-            size="lg"
-            onClick={() => {
-              setFlowStatus('idle');
-              setQuote(null);
-              setError(null);
-            }}
-          >
-            Try Again
-          </Button>
+          <div className="space-y-2">
+            <Button
+              variant="yellow"
+              fullWidth
+              size="lg"
+              onClick={handleDeposit}
+              loading={loading}
+            >
+              {loading ? 'Processing...' : 'Confirm Deposit'}
+            </Button>
+            <Button
+              variant="ghost"
+              fullWidth
+              onClick={() => {
+                setQuote(null);
+                setError(null);
+              }}
+            >
+              Get New Quote
+            </Button>
+          </div>
         )}
       </SwapPanel>
+
+      {/* Help text */}
+      <div className="text-center">
+        <p className="text-xs text-white/30">
+          Powered by <a href="https://li.fi" target="_blank" rel="noopener noreferrer" className="text-tago-yellow-400 hover:underline">LI.FI</a> cross-chain aggregation
+        </p>
+      </div>
     </div>
   );
 }

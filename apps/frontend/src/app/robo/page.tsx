@@ -16,6 +16,7 @@ import { useBuilderFee } from '@/hooks/useBuilderFee';
 import { usePositions } from '@/hooks/usePositions';
 import { useStrategies } from '@/hooks/useStrategies';
 import { PerformanceChart } from '@/components/PerformanceChart';
+import { useHyperliquidBalance } from '@/hooks/useHyperliquidBalance';
 
 type TabType = 'trade' | 'portfolio' | 'settings' | 'history';
 type TradeMode = 'pair' | 'basket';
@@ -78,6 +79,12 @@ export default function RoboPage() {
     toggleStrategy,
     refreshRuns,
   } = useStrategies(account?.id || null);
+  const {
+    balance: hlBalance,
+    isLoading: balanceLoading,
+    error: balanceError,
+    refresh: refreshBalance,
+  } = useHyperliquidBalance();
 
   // Tab state
   const [activeTab, setActiveTab] = useState<TabType>('trade');
@@ -152,6 +159,13 @@ export default function RoboPage() {
     const maxLev = parseInt(maxLeverage) || 5;
     if (leverage > maxLev) {
       setError(`Leverage exceeds your policy limit of ${maxLev}x`);
+      return;
+    }
+
+    // Check balance before executing
+    const notionalRequired = stake * leverage;
+    if (hlBalance && hlBalance.availableBalance < notionalRequired) {
+      setError(`Insufficient balance. You need $${notionalRequired.toFixed(2)} but only have $${hlBalance.availableBalance.toFixed(2)} available. Please deposit more USDC to Hyperliquid.`);
       return;
     }
 
@@ -760,6 +774,52 @@ export default function RoboPage() {
                     ${(parseFloat(stakeUsd || '0') * leverage).toFixed(2)}
                   </span>
                 </div>
+
+                {/* Balance Check */}
+                <div className="border-t border-white/[0.08] pt-3 space-y-2">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-white/40 font-light">Available Balance</span>
+                    {balanceLoading ? (
+                      <span className="text-white/40 text-xs">Loading...</span>
+                    ) : balanceError ? (
+                      <span className="text-red-400 text-xs">Error loading</span>
+                    ) : (
+                      <span className={`font-medium ${
+                        hlBalance && hlBalance.availableBalance >= (parseFloat(stakeUsd || '0') * leverage)
+                          ? 'text-green-400'
+                          : 'text-red-400'
+                      }`}>
+                        ${hlBalance?.availableBalance.toFixed(2) || '0.00'}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Insufficient balance warning */}
+                  {hlBalance && hlBalance.availableBalance < (parseFloat(stakeUsd || '0') * leverage) && (
+                    <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                      <p className="text-xs text-red-400 mb-2">
+                        Insufficient balance. Need ${((parseFloat(stakeUsd || '0') * leverage) - hlBalance.availableBalance).toFixed(2)} more.
+                      </p>
+                      <a
+                        href="https://app.hyperliquid.xyz"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-tago-yellow-400 hover:underline"
+                      >
+                        Deposit USDC on Hyperliquid
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Account health indicator */}
+                  {hlBalance && hlBalance.accountHealth < 50 && (
+                    <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-2">
+                      <p className="text-xs text-yellow-400">
+                        Account health: {hlBalance.accountHealth.toFixed(0)}% - Consider reducing leverage
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <Button
@@ -768,8 +828,14 @@ export default function RoboPage() {
                 size="lg"
                 onClick={handleExecute}
                 loading={executing}
+                disabled={
+                  balanceLoading ||
+                  (hlBalance !== null && hlBalance.availableBalance < (parseFloat(stakeUsd || '0') * leverage))
+                }
               >
-                Execute {tradeMode === 'pair' ? 'Pair' : 'Basket'} Trade
+                {hlBalance && hlBalance.availableBalance < (parseFloat(stakeUsd || '0') * leverage)
+                  ? 'Insufficient Balance'
+                  : `Execute ${tradeMode === 'pair' ? 'Pair' : 'Basket'} Trade`}
               </Button>
             </>
           )}
