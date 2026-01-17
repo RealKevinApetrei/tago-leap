@@ -54,10 +54,44 @@ export function useAgentWallet(): UseAgentWalletReturn {
     setError(null);
 
     try {
+      // First check if Pear has created an agent wallet
       const status = await pearApi.getAgentWallet(address);
-      setExists(status.exists);
       setAgentWalletAddress(status.agentWalletAddress);
-      setNeedsApproval(false); // If wallet exists, it's approved
+
+      if (!status.exists || !status.agentWalletAddress) {
+        setExists(false);
+        setNeedsApproval(false);
+        return;
+      }
+
+      // Now check if this agent wallet is actually approved on Hyperliquid
+      const hlResponse = await fetch('https://api.hyperliquid.xyz/info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'extraAgents',
+          user: address,
+        }),
+      });
+
+      if (hlResponse.ok) {
+        const agents = await hlResponse.json();
+        // Check if Pear's agent wallet is in the approved list
+        const isApproved = Array.isArray(agents) && agents.some(
+          (agent: { address: string }) =>
+            agent.address.toLowerCase() === status.agentWalletAddress!.toLowerCase()
+        );
+
+        console.log('[useAgentWallet] Hyperliquid agents:', agents);
+        console.log('[useAgentWallet] Pear agent approved:', isApproved);
+
+        setExists(isApproved);
+        setNeedsApproval(!isApproved);
+      } else {
+        // Can't verify, assume needs approval
+        setExists(false);
+        setNeedsApproval(true);
+      }
     } catch (err) {
       console.error('[useAgentWallet] Failed to check status:', err);
       setExists(false);
@@ -149,7 +183,7 @@ export function useAgentWallet(): UseAgentWalletReturn {
       });
 
       // Sign the approval message using wallet client directly
-      const signature = await walletClient.signTypedData({
+      const signatureHex = await walletClient.signTypedData({
         account: address,
         domain,
         types,
@@ -157,7 +191,14 @@ export function useAgentWallet(): UseAgentWalletReturn {
         message,
       });
 
-      console.log('[useAgentWallet] Got signature, sending to Hyperliquid');
+      // Convert hex signature to {r, s, v} format required by Hyperliquid
+      const r = signatureHex.slice(0, 66); // 0x + 64 chars
+      const s = `0x${signatureHex.slice(66, 130)}`;
+      const v = parseInt(signatureHex.slice(130, 132), 16);
+
+      const signature = { r, s, v };
+
+      console.log('[useAgentWallet] Got signature, sending to Hyperliquid:', { r, s, v });
 
       // Send approval to Hyperliquid API
       const response = await fetch('https://api.hyperliquid.xyz/exchange', {

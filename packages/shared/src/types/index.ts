@@ -7,6 +7,9 @@ export type { Database, Tables, TablesInsert, TablesUpdate, Json };
 // Re-export Pear Protocol types
 export * from './pear.js';
 
+// Re-export error types
+export * from './errors.js';
+
 // Convenience type aliases for table rows
 export type User = Tables<'users'>;
 export type Trade = Tables<'trades'>;

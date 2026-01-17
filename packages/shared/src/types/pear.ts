@@ -85,18 +85,30 @@ export interface OpenPositionPayload {
 }
 
 export interface OrderFill {
-  asset: string;
-  side: 'long' | 'short';
-  price: number;
-  size: number;
+  coin: string;
+  px: string;
+  sz: string;
+  dir: string;
+  fee: string;
+  oid: number;
+  tid: number;
+  hash: string;
+  side: string;
+  time: number;
+  cloid: string;
+  crossed: boolean;
+  feeToken: string;
+  closedPnl: string;
+  builderFee: string;
+  startPosition: string;
 }
 
 export interface OrderResponse {
   orderId: string;
-  status: 'pending' | 'filled' | 'rejected' | 'cancelled';
   fills?: OrderFill[];
+  status?: 'pending' | 'filled' | 'rejected' | 'cancelled';
   error?: string;
-  timestamp: string;
+  timestamp?: string;
 }
 
 // Authentication types

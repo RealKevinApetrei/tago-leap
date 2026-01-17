@@ -187,9 +187,12 @@ export async function tradesRoutes(app: FastifyInstance) {
       // Execute trade via Pear API
       const pearResponse = await openPosition(accessToken, orderPayload);
 
+      // Determine success based on response - Pear returns fills array for successful trades
+      const isSuccess = pearResponse.fills && pearResponse.fills.length > 0;
+
       // Update trade with response
       const updatedTrade = await updateTrade(app.supabase, trade.id, {
-        status: pearResponse.status === 'filled' ? 'completed' : 'failed',
+        status: isSuccess ? 'completed' : 'failed',
         pear_response: pearResponse as unknown as Json,
       });
 
@@ -328,9 +331,12 @@ export async function tradesRoutes(app: FastifyInstance) {
       // Execute trade via Pear API
       const pearResponse = await openPosition(accessToken, orderPayload);
 
+      // Determine success based on response - Pear returns fills array for successful trades
+      const isSuccess = pearResponse.fills && pearResponse.fills.length > 0;
+
       // Update trade with response
       const updatedTrade = await updateTrade(app.supabase, trade.id, {
-        status: pearResponse.status === 'filled' ? 'completed' : 'failed',
+        status: isSuccess ? 'completed' : 'failed',
         pear_response: pearResponse as unknown as Json,
       });
 

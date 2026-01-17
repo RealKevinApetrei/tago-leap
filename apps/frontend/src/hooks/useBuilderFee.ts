@@ -63,11 +63,15 @@ export function useBuilderFee(): UseBuilderFeeReturn {
 
       if (response.ok) {
         const data = await response.json();
-        // If maxFeeRate is returned and > 0, it's approved
-        const feeRate = parseFloat(data?.maxFeeRate || '0');
-        setIsApproved(feeRate > 0);
-        console.log('[useBuilderFee] Current approval status:', { feeRate, isApproved: feeRate > 0 });
+        // Response is just a number (fee in tenths of basis points)
+        // e.g., 10 = 1 basis point = 0.01%
+        const feeRate = typeof data === 'number' ? data : parseFloat(data || '0');
+        const approved = feeRate > 0;
+        setIsApproved(approved);
+        console.log('[useBuilderFee] Current approval status:', { feeRate, approved, rawData: data });
       } else {
+        const errorText = await response.text();
+        console.log('[useBuilderFee] Query failed:', response.status, errorText);
         // If query fails, assume not approved
         setIsApproved(false);
       }
@@ -136,7 +140,7 @@ export function useBuilderFee(): UseBuilderFeeReturn {
       });
 
       // Sign the approval message using wallet client directly
-      const signature = await walletClient.signTypedData({
+      const signatureHex = await walletClient.signTypedData({
         account: address,
         domain,
         types,
@@ -144,7 +148,14 @@ export function useBuilderFee(): UseBuilderFeeReturn {
         message,
       });
 
-      console.log('[useBuilderFee] Got signature, sending to Hyperliquid');
+      // Convert hex signature to {r, s, v} format required by Hyperliquid
+      const r = signatureHex.slice(0, 66); // 0x + 64 chars
+      const s = `0x${signatureHex.slice(66, 130)}`;
+      const v = parseInt(signatureHex.slice(130, 132), 16);
+
+      const signature = { r, s, v };
+
+      console.log('[useBuilderFee] Got signature, sending to Hyperliquid:', { r, s, v });
 
       // Send approval to Hyperliquid API
       const response = await fetch('https://api.hyperliquid.xyz/exchange', {
