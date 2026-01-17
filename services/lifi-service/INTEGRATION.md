@@ -10,11 +10,13 @@ The lifi-service handles **one-click onboarding to Hyperliquid/HyperEVM** using 
 
 ### Key Features
 
-- Bridge from 12+ source chains to HyperEVM in a single flow
+- Bridge from **57+ source chains** to HyperEVM in a single flow
+- **Route optimization** with multiple alternatives (fastest, cheapest, recommended)
 - Real-time quotes from LI.FI API with full route transparency
-- Fast bridging via Across V4 (~3-6 seconds)
+- Fast bridging via AcrossV4, Relay, and other bridges (~3 seconds)
 - Salt wallet integration for policy-controlled deposits
 - Progress tracking (Idle → Quoted → Bridging → Completed)
+- **No simulated routes** - only real, executable routes are returned
 
 ## Architecture
 
@@ -40,6 +42,10 @@ The lifi-service handles **one-click onboarding to Hyperliquid/HyperEVM** using 
 
 ### Source Chains (bridging FROM)
 
+LI.FI supports **57+ chains** that can bridge to HyperEVM. The service displays 13 primary chains by default:
+
+#### Primary Chains (displayed in UI)
+
 | Chain | Chain ID | Example USDC Address |
 |-------|----------|---------------------|
 | Ethereum | 1 | `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48` |
@@ -52,8 +58,19 @@ The lifi-service handles **one-click onboarding to Hyperliquid/HyperEVM** using 
 | zkSync Era | 324 | - |
 | Linea | 59144 | - |
 | Scroll | 534352 | - |
-| Fantom | 250 | - |
 | Gnosis | 100 | - |
+| Hyperliquid | 1337 | - |
+| HyperEVM | 999 | `0xb88339CB7199b77E23DB6E890353E22632Ba630f` |
+
+#### Additional Supported Chains (via LI.FI API)
+
+The following chains can also bridge to HyperEVM but are not shown in the default UI:
+
+- Blast (81457), Mode (34443), Mantle (5000), Celo (42220)
+- Moonbeam (1284), Sei (1329), Fantom (250)
+- And 40+ more chains via LI.FI connections
+
+To enable more chains, modify the `majorChainIds` array in `src/clients/lifiClient.ts`.
 
 ### Destination Chain (bridging TO)
 
@@ -61,11 +78,23 @@ The lifi-service handles **one-click onboarding to Hyperliquid/HyperEVM** using 
 |-------|----------|--------------|
 | **HyperEVM** | **999** | `0xb88339CB7199b77E23DB6E890353E22632Ba630f` |
 
-### Other HyperEVM Tokens
+### Supported Bridges
+
+Routes are automatically optimized using the best available bridge:
+
+| Bridge | Speed | Notes |
+|--------|-------|-------|
+| AcrossV4 | ~3 seconds | Lowest fees, recommended |
+| Relay | ~3 seconds | Fast alternative |
+| Stargate | ~1-5 minutes | LayerZero-based |
+| Hop | ~5-15 minutes | Established bridge |
+
+### HyperEVM Tokens
 
 | Token | Address |
 |-------|---------|
 | HYPE (native) | `0x0000000000000000000000000000000000000000` |
+| USDC | `0xb88339CB7199b77E23DB6E890353E22632Ba630f` |
 | ETH | `0x1fbcCdc677c10671eE50b46C61F0f7d135112450` |
 | WBTC | `0x0555E30da8f98308EdB960aa94C0Db47230d2B9c` |
 | USDe | `0x5d3a1Ff2b6BAb83b63cd9ad0787074081a52ef34` |
@@ -114,7 +143,7 @@ Gets or creates a salt wallet for a user. Calls salt-service internally.
 
 ### POST /onboard/quote
 
-Creates a quote for bridging from any chain to HyperEVM. Calls the real LI.FI API (`https://li.quest/v1/quote`).
+Creates a quote for bridging from any chain to HyperEVM. Returns **multiple route alternatives** sorted by preference. Calls the real LI.FI API (`https://li.quest/v1/advanced/routes`).
 
 **Request Body:**
 ```json
@@ -122,8 +151,9 @@ Creates a quote for bridging from any chain to HyperEVM. Calls the real LI.FI AP
   "userWalletAddress": "0x123...",
   "fromChainId": 42161,
   "fromTokenAddress": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
-  "amount": "10000000",
+  "amount": "100000000",
   "toTokenAddress": "0xb88339CB7199b77E23DB6E890353E22632Ba630f",
+  "preference": "recommended",
   "depositToSaltWallet": true
 }
 ```
@@ -132,49 +162,40 @@ Creates a quote for bridging from any chain to HyperEVM. Calls the real LI.FI AP
 - `userWalletAddress` - User's connected wallet address (required for LI.FI quote)
 - `fromChainId` - Source chain ID (1 = Ethereum, 42161 = Arbitrum, etc.)
 - `fromTokenAddress` - Token address on source chain
-- `amount` - Amount in token's smallest unit (e.g., 10000000 for 10 USDC)
+- `amount` - Amount in token's smallest unit (e.g., 100000000 for 100 USDC)
 - `toTokenAddress` - Destination token on HyperEVM (use `0xb88339CB7199b77E23DB6E890353E22632Ba630f` for USDC)
+- `preference` (optional) - Route optimization: `recommended` (default), `fastest`, `cheapest`, or `safest`
 - `depositToSaltWallet` (optional) - If true, deposits to user's salt wallet
 
-**Response (Real LI.FI Data):**
+**Response (with Route Alternatives):**
 ```json
 {
   "success": true,
   "data": {
     "id": "uuid",
     "status": "initiated",
-    "from_chain_id": 42161,
-    "from_token_address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
-    "to_token_address": "0xb88339CB7199b77E23DB6E890353E22632Ba630f",
-    "amount": "10000000",
-    "lifi_route": {
-      "routeId": "63206e27-0f40-46d0-b029-c6bbea2f242f:0",
+    "preference": "recommended",
+    "routeCount": 2,
+    "recommended": {
+      "routeId": "0f6b8d8c-bbda-44da-93f5-74f8e98485f0",
       "fromChainId": 42161,
       "fromChain": { "chainId": 42161, "name": "Arbitrum" },
       "toChainId": 999,
       "toChain": { "chainId": 999, "name": "HyperEVM" },
       "fromTokenInfo": { "symbol": "USDC", "decimals": 6, "priceUsd": "1.00" },
       "toTokenInfo": { "symbol": "USDC", "decimals": 6, "priceUsd": "1.00" },
-      "fromAmountFormatted": "10.00",
-      "toAmountFormatted": "9.97",
+      "fromAmountFormatted": "100.00",
+      "toAmountFormatted": "99.74",
       "estimatedDurationSeconds": 3,
       "estimatedDurationFormatted": "~3 seconds",
       "fees": {
         "gasCostUsd": "0.01",
-        "protocolFeeUsd": "0.03",
-        "totalFeeUsd": "0.04"
+        "protocolFeeUsd": "0.26",
+        "totalFeeUsd": "0.27"
       },
       "steps": [
         {
           "stepIndex": 1,
-          "type": "swap",
-          "action": "Swap USDC to USDC via Integrator Fee",
-          "toolName": "Integrator Fee",
-          "fromChainName": "Arbitrum",
-          "toChainName": "Arbitrum"
-        },
-        {
-          "stepIndex": 2,
           "type": "bridge",
           "action": "Bridge USDC to USDC via AcrossV4",
           "toolName": "AcrossV4",
@@ -182,10 +203,33 @@ Creates a quote for bridging from any chain to HyperEVM. Calls the real LI.FI AP
           "toChainName": "HyperEVM",
           "estimatedDurationSeconds": 3
         }
-      ]
+      ],
+      "tags": ["RECOMMENDED", "CHEAPEST", "FASTEST", "BEST_RETURN"]
     },
+    "alternatives": [
+      { "routeId": "...", "toolName": "AcrossV4", "toAmountFormatted": "99.74", "totalFeeUsd": "0.27" },
+      { "routeId": "...", "toolName": "Relay", "toAmountFormatted": "99.68", "totalFeeUsd": "0.34" }
+    ],
     "saltWalletAddress": "0xabc..."
   }
+}
+```
+
+**Route Tags:**
+- `RECOMMENDED` - Best overall route based on preference
+- `CHEAPEST` - Lowest total fees
+- `FASTEST` - Shortest execution time
+- `BEST_RETURN` - Highest output amount
+
+### POST /onboard/select-route
+
+Allows user to select a specific route from the alternatives (optional - defaults to recommended).
+
+**Request Body:**
+```json
+{
+  "flowId": "uuid",
+  "routeId": "selected-route-id"
 }
 ```
 
@@ -218,14 +262,15 @@ Gets an onboarding flow by ID.
 
 ## Real Performance Data
 
-Based on actual LI.FI API responses:
+Based on actual LI.FI API responses (January 2026):
 
-| Route | Amount | Output | Duration | Total Fee |
-|-------|--------|--------|----------|-----------|
-| Arbitrum → HyperEVM | $10 USDC | $9.97 USDC | ~3 sec | $0.04 |
-| Ethereum → HyperEVM | $10 USDC | $9.97 USDC | ~6 sec | $0.06 |
+| Route | Amount | Output | Duration | Total Fee | Bridge |
+|-------|--------|--------|----------|-----------|--------|
+| Arbitrum → HyperEVM | $100 USDC | $99.74 USDC | ~3 sec | $0.27 | AcrossV4 |
+| Arbitrum → HyperEVM | $100 USDC | $99.68 USDC | ~3 sec | $0.34 | Relay |
+| Ethereum → HyperEVM | $100 USDC | ~$99.50 USDC | ~3-6 sec | ~$0.50 | AcrossV4 |
 
-**Bridge Protocol:** Across V4 (fast finality, low fees)
+**Primary Bridges:** AcrossV4 (fastest, lowest fees), Relay (fast alternative)
 
 ## Route Transparency
 
