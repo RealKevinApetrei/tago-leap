@@ -150,14 +150,28 @@ export const lifiApi = {
   getOptions: () =>
     fetchApi<any[]>(`${config.lifiServiceUrl}/onboard/options`),
 
+  getSaltWallet: (address: string) =>
+    fetchApi<{
+      userWalletAddress: string;
+      saltWalletAddress: string;
+      exists: boolean;
+    }>(`${config.lifiServiceUrl}/onboard/salt-wallet/${address}`),
+
   getQuote: (data: {
     userWalletAddress: string;
     fromChainId: number;
     fromTokenAddress: string;
     amount: string;
     toTokenAddress: string;
+    depositToSaltWallet?: boolean;
   }) =>
     fetchApi<any>(`${config.lifiServiceUrl}/onboard/quote`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  selectRoute: (data: { flowId: string; routeId: string }) =>
+    fetchApi<any>(`${config.lifiServiceUrl}/onboard/select-route`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
@@ -173,6 +187,9 @@ export const lifiApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  getFlow: (flowId: string) =>
+    fetchApi<any>(`${config.lifiServiceUrl}/onboard/flow/${flowId}`),
 };
 
 // Salt Service API
