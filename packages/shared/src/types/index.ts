@@ -69,12 +69,32 @@ export interface PearOrderPayload {
 }
 
 // Onboarding types for LI.FI service
+
+/** Route preference for optimization */
+export type RoutePreference = 'recommended' | 'fastest' | 'cheapest' | 'safest';
+
 export interface OnboardingQuoteRequest {
   userWalletAddress: string;
   fromChainId: number;
   fromTokenAddress: string;
   amount: string;
   toTokenAddress: string;
+  /** Route optimization preference */
+  preference?: RoutePreference;
+  /** If true, deposit to user's salt wallet */
+  depositToSaltWallet?: boolean;
+}
+
+/** Response containing multiple route alternatives */
+export interface RouteAlternatives {
+  /** Recommended route based on preference */
+  recommended: LifiRoute;
+  /** All available routes sorted by preference */
+  alternatives: LifiRoute[];
+  /** The preference used for sorting */
+  preference: RoutePreference;
+  /** Number of routes found */
+  routeCount: number;
 }
 
 /** Token info with human-readable details */

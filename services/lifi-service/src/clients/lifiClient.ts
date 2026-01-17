@@ -1,5 +1,13 @@
 import { lifiConfig } from '../config/lifiConfig.js';
-import type { SupportedOption, LifiRoute, ChainInfo, TokenInfo, LifiRouteStep } from '@tago-leap/shared/types';
+import type {
+  SupportedOption,
+  LifiRoute,
+  ChainInfo,
+  TokenInfo,
+  LifiRouteStep,
+  RoutePreference,
+  RouteAlternatives,
+} from '@tago-leap/shared/types';
 
 const LIFI_API = lifiConfig.apiBaseUrl;
 const INTEGRATOR = lifiConfig.integrator;
@@ -40,51 +48,31 @@ interface LifiToken {
   chainId: number;
 }
 
-interface LifiQuoteResponse {
+interface LifiRoutesResponse {
+  routes: LifiRouteRaw[];
+}
+
+interface LifiRouteRaw {
   id: string;
-  type: string;
-  tool: string;
-  action: {
-    fromChainId: number;
-    toChainId: number;
-    fromToken: LifiToken;
-    toToken: LifiToken;
-    fromAmount: string;
-    toAmount: string;
-    slippage: number;
-  };
-  estimate: {
-    fromAmount: string;
-    toAmount: string;
-    toAmountMin: string;
-    approvalAddress: string;
-    executionDuration: number;
-    feeCosts?: Array<{
-      name: string;
-      amount: string;
-      amountUSD: string;
-      token: LifiToken;
-    }>;
-    gasCosts?: Array<{
-      type: string;
-      amount: string;
-      amountUSD: string;
-      token: LifiToken;
-    }>;
-  };
-  includedSteps?: LifiStepDetail[];
-  transactionRequest?: {
-    to: string;
-    data: string;
-    value: string;
-    gasLimit: string;
-    gasPrice: string;
+  fromChainId: number;
+  toChainId: number;
+  fromToken: LifiToken;
+  toToken: LifiToken;
+  fromAmount: string;
+  toAmount: string;
+  toAmountMin: string;
+  gasCostUSD?: string;
+  steps: LifiStepRaw[];
+  tags?: string[];
+  insurance?: {
+    state: string;
+    feeAmountUsd: string;
   };
 }
 
-interface LifiStepDetail {
+interface LifiStepRaw {
   id: string;
-  type: 'swap' | 'cross' | 'lifi';
+  type: 'swap' | 'cross' | 'lifi' | 'protocol';
   tool: string;
   toolDetails: {
     key: string;
@@ -97,20 +85,26 @@ interface LifiStepDetail {
     fromToken: LifiToken;
     toToken: LifiToken;
     fromAmount: string;
-    toAmount: string;
+    toAmount?: string;
+    slippage?: number;
   };
   estimate: {
     fromAmount: string;
     toAmount: string;
     toAmountMin: string;
     executionDuration: number;
+    approvalAddress?: string;
     gasCosts?: Array<{
+      type: string;
       amount: string;
       amountUSD: string;
+      token: LifiToken;
     }>;
     feeCosts?: Array<{
+      name: string;
       amount: string;
       amountUSD: string;
+      token: LifiToken;
     }>;
   };
 }
@@ -143,15 +137,6 @@ function formatDuration(seconds: number): string {
   }
 }
 
-function mapChainToChainInfo(chain: LifiChain): ChainInfo {
-  return {
-    chainId: chain.id,
-    name: chain.name,
-    logoUri: chain.logoURI,
-    explorerUrl: chain.metamask?.blockExplorerUrls?.[0],
-  };
-}
-
 function mapTokenToTokenInfo(token: LifiToken): TokenInfo {
   return {
     address: token.address,
@@ -161,6 +146,33 @@ function mapTokenToTokenInfo(token: LifiToken): TokenInfo {
     logoUri: token.logoURI,
     priceUsd: token.priceUSD,
   };
+}
+
+/**
+ * Get chain name from cache or return default
+ */
+function getChainName(chainId: number): string {
+  const chain = chainsCache?.find((c) => c.id === chainId);
+  if (chain) return chain.name;
+
+  // Fallback names
+  const names: Record<number, string> = {
+    1: 'Ethereum',
+    42161: 'Arbitrum',
+    10: 'Optimism',
+    137: 'Polygon',
+    56: 'BNB Chain',
+    43114: 'Avalanche',
+    8453: 'Base',
+    324: 'zkSync Era',
+    59144: 'Linea',
+    534352: 'Scroll',
+    250: 'Fantom',
+    100: 'Gnosis',
+    999: 'HyperEVM',
+    1337: 'Hyperliquid',
+  };
+  return names[chainId] || `Chain ${chainId}`;
 }
 
 // ----- API Functions -----
@@ -182,7 +194,7 @@ async function fetchChains(): Promise<LifiChain[]> {
     throw new Error(`Failed to fetch chains: ${response.status} ${response.statusText}`);
   }
 
-  const data = await response.json() as { chains: LifiChain[] };
+  const data = (await response.json()) as { chains: LifiChain[] };
   chainsCache = data.chains;
   chainsCacheTime = Date.now();
 
@@ -208,7 +220,7 @@ async function fetchTokens(chainIds: number[]): Promise<Map<number, LifiToken[]>
     throw new Error(`Failed to fetch tokens: ${response.status} ${response.statusText}`);
   }
 
-  const data = await response.json() as { tokens: Record<string, LifiToken[]> };
+  const data = (await response.json()) as { tokens: Record<string, LifiToken[]> };
 
   tokensCache = new Map();
   for (const [chainId, tokens] of Object.entries(data.tokens)) {
@@ -232,43 +244,44 @@ export async function getSupportedOptions(): Promise<SupportedOption[]> {
 
     // Filter to major EVM chains + HyperEVM/Hyperliquid (exclude testnets)
     const majorChainIds = [
-      1,      // Ethereum
-      42161,  // Arbitrum
-      10,     // Optimism
-      137,    // Polygon
-      56,     // BSC
-      43114,  // Avalanche
-      8453,   // Base
-      324,    // zkSync Era
-      59144,  // Linea
+      1, // Ethereum
+      42161, // Arbitrum
+      10, // Optimism
+      137, // Polygon
+      56, // BSC
+      43114, // Avalanche
+      8453, // Base
+      324, // zkSync Era
+      59144, // Linea
       534352, // Scroll
-      250,    // Fantom
-      100,    // Gnosis
-      999,    // HyperEVM (destination)
-      1337,   // Hyperliquid
+      250, // Fantom
+      100, // Gnosis
+      999, // HyperEVM (destination)
+      1337, // Hyperliquid
     ];
 
-    const supportedChains = chains.filter(c => majorChainIds.includes(c.id));
+    const supportedChains = chains.filter((c) => majorChainIds.includes(c.id));
 
     // Fetch tokens for these chains
-    const tokensByChain = await fetchTokens(supportedChains.map(c => c.id));
+    const tokensByChain = await fetchTokens(supportedChains.map((c) => c.id));
 
     // Build response
-    const options: SupportedOption[] = supportedChains.map(chain => {
+    const options: SupportedOption[] = supportedChains.map((chain) => {
       const chainTokens = tokensByChain.get(chain.id) || [];
 
       // Filter to popular tokens (by having a price or being well-known)
       const popularTokens = chainTokens
-        .filter(t =>
-          t.priceUSD ||
-          ['ETH', 'WETH', 'USDC', 'USDT', 'DAI', 'WBTC', 'LINK', 'UNI', 'AAVE'].includes(t.symbol)
+        .filter(
+          (t) =>
+            t.priceUSD ||
+            ['ETH', 'WETH', 'USDC', 'USDT', 'DAI', 'WBTC', 'LINK', 'UNI', 'AAVE'].includes(t.symbol)
         )
         .slice(0, 20); // Limit to 20 tokens per chain
 
       return {
         chainId: chain.id,
         chainName: chain.name,
-        tokens: popularTokens.map(t => ({
+        tokens: popularTokens.map((t) => ({
           address: t.address,
           symbol: t.symbol,
           decimals: t.decimals,
@@ -342,6 +355,8 @@ function getFallbackOptions(): SupportedOption[] {
   ];
 }
 
+// ----- Route Fetching with Optimization -----
+
 interface GetRoutesParams {
   fromChainId: number;
   toChainId: number;
@@ -350,74 +365,213 @@ interface GetRoutesParams {
   fromAmount: string;
   fromAddress?: string;
   toAddress?: string;
+  preference?: RoutePreference;
 }
 
 /**
- * Get a quote/route from LI.FI API with full transparency
+ * Get multiple route alternatives from LI.FI API with optimization
+ *
+ * Uses the /advanced/routes endpoint to fetch multiple options, then sorts
+ * them based on the user's preference (fastest, cheapest, etc.)
  */
-export async function getRoutes(params: GetRoutesParams): Promise<LifiRoute> {
-  console.log(`[LifiClient] Getting quote from ${LIFI_API}/quote`);
+export async function getRoutes(params: GetRoutesParams): Promise<RouteAlternatives> {
+  const preference = params.preference || 'recommended';
+  console.log(
+    `[LifiClient] Getting routes from ${LIFI_API}/advanced/routes (preference: ${preference})`
+  );
 
-  try {
-    // Build query parameters for LI.FI quote API
-    const queryParams = new URLSearchParams({
-      fromChain: params.fromChainId.toString(),
-      toChain: params.toChainId.toString(),
-      fromToken: params.fromTokenAddress,
-      toToken: params.toTokenAddress,
-      fromAmount: params.fromAmount,
-      fromAddress: params.fromAddress || '0x0000000000000000000000000000000000000000',
-      toAddress: params.toAddress || params.fromAddress || '0x0000000000000000000000000000000000000000',
+  // Build request body for LI.FI /advanced/routes endpoint
+  // See: https://docs.li.fi/api-reference/get-a-set-of-routes-for-a-request
+  // IMPORTANT: LI.FI requires lowercase addresses for EVM chains
+  const fromAddress = (params.fromAddress || '0x0000000000000000000000000000000000000000').toLowerCase();
+  const toAddress = (params.toAddress || params.fromAddress || '0x0000000000000000000000000000000000000000').toLowerCase();
+
+  const requestBody = {
+    fromChainId: params.fromChainId,
+    toChainId: params.toChainId,
+    fromTokenAddress: params.fromTokenAddress.toLowerCase(),
+    toTokenAddress: params.toTokenAddress.toLowerCase(),
+    fromAmount: params.fromAmount,
+    fromAddress,
+    toAddress,
+    options: {
       integrator: INTEGRATOR,
-      slippage: '0.005', // 0.5%
-    });
+      slippage: 0.005, // 0.5%
+      order: mapPreferenceToOrder(preference),
+      allowSwitchChain: true,
+    },
+  };
 
-    const response = await fetch(`${LIFI_API}/quote?${queryParams}`);
+  console.log(`[LifiClient] Request body:`, JSON.stringify(requestBody, null, 2));
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[LifiClient] Quote API error: ${response.status}`, errorText);
-      // Fall back to simulated route
-      return getSimulatedRoute(params);
-    }
+  const response = await fetch(`${LIFI_API}/advanced/routes`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(requestBody),
+  });
 
-    const quote = await response.json() as LifiQuoteResponse;
-    return mapQuoteToRoute(quote, params);
-  } catch (error) {
-    console.error('[LifiClient] Error fetching quote:', error);
-    // Fall back to simulated route
-    return getSimulatedRoute(params);
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[LifiClient] Routes API error: ${response.status}`, errorText);
+    throw new Error(
+      `No routes available for this swap. LI.FI API returned: ${response.status} - ${errorText}`
+    );
+  }
+
+  const data = (await response.json()) as LifiRoutesResponse;
+
+  if (!data.routes || data.routes.length === 0) {
+    throw new Error(
+      `No routes found for bridging from chain ${params.fromChainId} to chain ${params.toChainId}. ` +
+        `This route may not be supported yet.`
+    );
+  }
+
+  console.log(`[LifiClient] Found ${data.routes.length} routes`);
+
+  // Map and sort routes based on preference
+  const mappedRoutes = data.routes.map((route, index) =>
+    mapRawRouteToLifiRoute(route, preference, index)
+  );
+
+  // Sort routes based on preference
+  const sortedRoutes = sortRoutesByPreference(mappedRoutes, preference);
+
+  // Tag routes
+  tagRoutes(sortedRoutes);
+
+  return {
+    recommended: sortedRoutes[0],
+    alternatives: sortedRoutes,
+    preference,
+    routeCount: sortedRoutes.length,
+  };
+}
+
+/**
+ * Get a single route (for backwards compatibility)
+ */
+export async function getRoute(params: GetRoutesParams): Promise<LifiRoute> {
+  const alternatives = await getRoutes(params);
+  return alternatives.recommended;
+}
+
+/**
+ * Map preference to LI.FI order parameter
+ */
+function mapPreferenceToOrder(preference: RoutePreference): string {
+  switch (preference) {
+    case 'fastest':
+      return 'FASTEST';
+    case 'cheapest':
+      return 'CHEAPEST';
+    case 'safest':
+      return 'SAFEST';
+    case 'recommended':
+    default:
+      return 'RECOMMENDED';
   }
 }
 
 /**
- * Map LI.FI quote response to our LifiRoute format
+ * Sort routes based on user preference
  */
-function mapQuoteToRoute(quote: LifiQuoteResponse, params: GetRoutesParams): LifiRoute {
-  const fromToken = quote.action.fromToken;
-  const toToken = quote.action.toToken;
+function sortRoutesByPreference(routes: LifiRoute[], preference: RoutePreference): LifiRoute[] {
+  return [...routes].sort((a, b) => {
+    switch (preference) {
+      case 'fastest':
+        return a.estimatedDurationSeconds - b.estimatedDurationSeconds;
+      case 'cheapest':
+        return parseFloat(a.fees.totalFeeUsd) - parseFloat(b.fees.totalFeeUsd);
+      case 'safest':
+        // Prefer routes with fewer steps (simpler = safer)
+        return a.steps.length - b.steps.length;
+      case 'recommended':
+      default:
+        // Balance between output amount and fees
+        const aScore = parseFloat(a.toAmountUsd) - parseFloat(a.fees.totalFeeUsd);
+        const bScore = parseFloat(b.toAmountUsd) - parseFloat(b.fees.totalFeeUsd);
+        return bScore - aScore; // Higher score = better
+    }
+  });
+}
 
-  // Calculate fees
-  const gasCostUsd = quote.estimate.gasCosts?.reduce(
-    (sum, gc) => sum + Number(gc.amountUSD || 0), 0
-  ) || 0;
-  const protocolFeeUsd = quote.estimate.feeCosts?.reduce(
-    (sum, fc) => sum + Number(fc.amountUSD || 0), 0
-  ) || 0;
+/**
+ * Tag routes with FASTEST, CHEAPEST, etc.
+ */
+function tagRoutes(routes: LifiRoute[]): void {
+  if (routes.length === 0) return;
 
-  // Map steps
-  const steps: LifiRouteStep[] = (quote.includedSteps || []).map((step, index) => {
-    const stepGasCost = step.estimate.gasCosts?.reduce(
-      (sum, gc) => sum + Number(gc.amountUSD || 0), 0
-    ) || 0;
-    const stepProtocolFee = step.estimate.feeCosts?.reduce(
-      (sum, fc) => sum + Number(fc.amountUSD || 0), 0
-    ) || 0;
+  // Find fastest
+  const fastest = routes.reduce((min, r) =>
+    r.estimatedDurationSeconds < min.estimatedDurationSeconds ? r : min
+  );
+  fastest.tags = fastest.tags || [];
+  if (!fastest.tags.includes('FASTEST')) {
+    fastest.tags.push('FASTEST');
+  }
+
+  // Find cheapest (lowest total fee)
+  const cheapest = routes.reduce((min, r) =>
+    parseFloat(r.fees.totalFeeUsd) < parseFloat(min.fees.totalFeeUsd) ? r : min
+  );
+  cheapest.tags = cheapest.tags || [];
+  if (!cheapest.tags.includes('CHEAPEST')) {
+    cheapest.tags.push('CHEAPEST');
+  }
+
+  // Find best output
+  const bestOutput = routes.reduce((max, r) =>
+    parseFloat(r.toAmountUsd) > parseFloat(max.toAmountUsd) ? r : max
+  );
+  bestOutput.tags = bestOutput.tags || [];
+  if (!bestOutput.tags.includes('BEST_RETURN')) {
+    bestOutput.tags.push('BEST_RETURN');
+  }
+
+  // Mark first as recommended
+  routes[0].tags = routes[0].tags || [];
+  if (!routes[0].tags.includes('RECOMMENDED')) {
+    routes[0].tags.push('RECOMMENDED');
+  }
+}
+
+/**
+ * Map LI.FI raw route to our LifiRoute format
+ */
+function mapRawRouteToLifiRoute(
+  route: LifiRouteRaw,
+  preference: RoutePreference,
+  index: number
+): LifiRoute {
+  const fromToken = route.fromToken;
+  const toToken = route.toToken;
+
+  // Calculate total fees from all steps
+  let totalGasCostUsd = 0;
+  let totalProtocolFeeUsd = 0;
+  let totalDurationSeconds = 0;
+
+  const steps: LifiRouteStep[] = route.steps.map((step, stepIndex) => {
+    const stepGasCost =
+      step.estimate.gasCosts?.reduce((sum, gc) => sum + Number(gc.amountUSD || 0), 0) || 0;
+    const stepProtocolFee =
+      step.estimate.feeCosts?.reduce((sum, fc) => sum + Number(fc.amountUSD || 0), 0) || 0;
+
+    totalGasCostUsd += stepGasCost;
+    totalProtocolFeeUsd += stepProtocolFee;
+    totalDurationSeconds += step.estimate.executionDuration || 0;
+
+    const stepType: 'swap' | 'bridge' | 'cross' =
+      step.type === 'cross' || step.type === 'lifi' ? 'bridge' : (step.type as 'swap' | 'bridge');
 
     return {
-      stepIndex: index + 1,
-      type: step.type === 'cross' ? 'bridge' as const : step.type as 'swap' | 'bridge',
-      action: `${step.type === 'cross' ? 'Bridge' : 'Swap'} ${step.action.fromToken.symbol} to ${step.action.toToken.symbol} via ${step.toolDetails.name}`,
+      stepIndex: stepIndex + 1,
+      type: stepType,
+      action: `${stepType === 'bridge' ? 'Bridge' : 'Swap'} ${step.action.fromToken.symbol} to ${step.action.toToken.symbol} via ${step.toolDetails.name}`,
       tool: step.tool,
       toolName: step.toolDetails.name,
       toolLogoUri: step.toolDetails.logoURI,
@@ -433,7 +587,7 @@ function mapQuoteToRoute(quote: LifiQuoteResponse, params: GetRoutesParams): Lif
       fromAmountFormatted: formatAmount(step.estimate.fromAmount, step.action.fromToken.decimals),
       toAmount: step.estimate.toAmount,
       toAmountFormatted: formatAmount(step.estimate.toAmount, step.action.toToken.decimals),
-      estimatedDurationSeconds: step.estimate.executionDuration,
+      estimatedDurationSeconds: step.estimate.executionDuration || 0,
       fees: {
         gasCostUsd: stepGasCost.toFixed(2),
         protocolFeeUsd: stepProtocolFee.toFixed(2),
@@ -442,188 +596,61 @@ function mapQuoteToRoute(quote: LifiQuoteResponse, params: GetRoutesParams): Lif
     };
   });
 
-  // If no steps returned, create a single step from the main quote
-  if (steps.length === 0) {
-    steps.push({
-      stepIndex: 1,
-      type: quote.type === 'cross' ? 'bridge' as const : 'swap' as const,
-      action: `${quote.type === 'cross' ? 'Bridge' : 'Swap'} ${fromToken.symbol} to ${toToken.symbol} via ${quote.tool}`,
-      tool: quote.tool,
-      toolName: quote.tool,
-      toolLogoUri: undefined,
-      fromChainId: params.fromChainId,
-      fromChainName: getChainName(params.fromChainId),
-      toChainId: params.toChainId,
-      toChainName: getChainName(params.toChainId),
-      fromToken: fromToken.address,
-      fromTokenSymbol: fromToken.symbol,
-      toToken: toToken.address,
-      toTokenSymbol: toToken.symbol,
-      fromAmount: quote.estimate.fromAmount,
-      fromAmountFormatted: formatAmount(quote.estimate.fromAmount, fromToken.decimals),
-      toAmount: quote.estimate.toAmount,
-      toAmountFormatted: formatAmount(quote.estimate.toAmount, toToken.decimals),
-      estimatedDurationSeconds: quote.estimate.executionDuration,
-      fees: {
-        gasCostUsd: gasCostUsd.toFixed(2),
-        protocolFeeUsd: protocolFeeUsd.toFixed(2),
-      },
-      status: 'pending' as const,
-    });
+  const fromAmountFormatted = formatAmount(route.fromAmount, fromToken.decimals);
+  const toAmountFormatted = formatAmount(route.toAmount, toToken.decimals);
+
+  // Get prices
+  const fromPriceUsd = parseFloat(fromToken.priceUSD || '1');
+  const toPriceUsd = parseFloat(toToken.priceUSD || '1');
+
+  const fromAmountUsd = (parseFloat(fromAmountFormatted) * fromPriceUsd).toFixed(2);
+  const toAmountUsd = (parseFloat(toAmountFormatted) * toPriceUsd).toFixed(2);
+
+  // Include insurance fee if present
+  if (route.insurance?.feeAmountUsd) {
+    totalProtocolFeeUsd += parseFloat(route.insurance.feeAmountUsd);
   }
 
-  const fromAmountFormatted = formatAmount(quote.estimate.fromAmount, fromToken.decimals);
-  const toAmountFormatted = formatAmount(quote.estimate.toAmount, toToken.decimals);
+  // Calculate exchange rate
+  const fromAmountNum = parseFloat(fromAmountFormatted);
+  const toAmountNum = parseFloat(toAmountFormatted);
+  const exchangeRate = fromAmountNum > 0 ? (toAmountNum / fromAmountNum).toFixed(6) : '1.000000';
 
   return {
-    routeId: quote.id || `route_${Date.now()}`,
-    fromChainId: params.fromChainId,
+    routeId: route.id,
+    fromChainId: route.fromChainId,
     fromChain: {
-      chainId: params.fromChainId,
-      name: getChainName(params.fromChainId),
+      chainId: route.fromChainId,
+      name: getChainName(route.fromChainId),
     },
-    toChainId: params.toChainId,
+    toChainId: route.toChainId,
     toChain: {
-      chainId: params.toChainId,
-      name: getChainName(params.toChainId),
+      chainId: route.toChainId,
+      name: getChainName(route.toChainId),
     },
     fromToken: fromToken.address,
     fromTokenInfo: mapTokenToTokenInfo(fromToken),
     toToken: toToken.address,
     toTokenInfo: mapTokenToTokenInfo(toToken),
-    fromAmount: quote.estimate.fromAmount,
+    fromAmount: route.fromAmount,
     fromAmountFormatted,
-    fromAmountUsd: (Number(fromAmountFormatted) * Number(fromToken.priceUSD || 1)).toFixed(2),
-    toAmount: quote.estimate.toAmount,
+    fromAmountUsd,
+    toAmount: route.toAmount,
     toAmountFormatted,
-    toAmountUsd: (Number(toAmountFormatted) * Number(toToken.priceUSD || 1)).toFixed(2),
-    toAmountMin: quote.estimate.toAmountMin,
-    exchangeRate: (Number(quote.estimate.toAmount) / Number(quote.estimate.fromAmount)).toFixed(6),
-    slippage: (quote.action.slippage * 100).toString(),
-    estimatedDurationSeconds: quote.estimate.executionDuration,
-    estimatedDurationFormatted: formatDuration(quote.estimate.executionDuration),
+    toAmountUsd,
+    toAmountMin: route.toAmountMin,
+    exchangeRate,
+    slippage: '0.5',
+    estimatedDurationSeconds: totalDurationSeconds,
+    estimatedDurationFormatted: formatDuration(totalDurationSeconds),
     fees: {
       gasCostNative: '0',
-      gasCostUsd: gasCostUsd.toFixed(2),
-      protocolFeeUsd: protocolFeeUsd.toFixed(2),
-      totalFeeUsd: (gasCostUsd + protocolFeeUsd).toFixed(2),
+      gasCostUsd: totalGasCostUsd.toFixed(2),
+      protocolFeeUsd: totalProtocolFeeUsd.toFixed(2),
+      totalFeeUsd: (totalGasCostUsd + totalProtocolFeeUsd).toFixed(2),
     },
-    estimatedGas: gasCostUsd.toFixed(4),
+    estimatedGas: totalGasCostUsd.toFixed(4),
     steps,
-    tags: [],
-  };
-}
-
-/**
- * Get chain name from cache or return default
- */
-function getChainName(chainId: number): string {
-  const chain = chainsCache?.find(c => c.id === chainId);
-  if (chain) return chain.name;
-
-  // Fallback names
-  const names: Record<number, string> = {
-    1: 'Ethereum',
-    42161: 'Arbitrum',
-    10: 'Optimism',
-    137: 'Polygon',
-    56: 'BNB Chain',
-    43114: 'Avalanche',
-    8453: 'Base',
-    324: 'zkSync Era',
-    59144: 'Linea',
-    534352: 'Scroll',
-    250: 'Fantom',
-    100: 'Gnosis',
-    999: 'HyperEVM',
-    1337: 'Hyperliquid',
-  };
-  return names[chainId] || `Chain ${chainId}`;
-}
-
-/**
- * Simulated route when API is unavailable (fallback)
- */
-function getSimulatedRoute(params: GetRoutesParams): LifiRoute {
-  console.log('[LifiClient] Using simulated route (API unavailable)');
-
-  const fromChainName = getChainName(params.fromChainId);
-  const toChainName = getChainName(params.toChainId);
-
-  // Simulate a bridge route
-  const feeMultiplier = 0.997;
-  const toAmountRaw = Math.floor(Number(params.fromAmount) * feeMultiplier).toString();
-  const toAmountMin = Math.floor(Number(toAmountRaw) * 0.995).toString();
-
-  // Estimate duration based on source chain
-  const duration = params.fromChainId === 42161 ? 120 :
-    params.fromChainId === 10 ? 180 :
-    params.fromChainId === 137 ? 300 :
-    300;
-
-  const steps: LifiRouteStep[] = [{
-    stepIndex: 1,
-    type: 'bridge',
-    action: `Bridge to ${toChainName}`,
-    tool: 'lifi-bridge',
-    toolName: 'LI.FI Bridge',
-    fromChainId: params.fromChainId,
-    fromChainName,
-    toChainId: params.toChainId,
-    toChainName,
-    fromToken: params.fromTokenAddress,
-    fromTokenSymbol: 'TOKEN',
-    toToken: params.toTokenAddress,
-    toTokenSymbol: 'TOKEN',
-    fromAmount: params.fromAmount,
-    fromAmountFormatted: formatAmount(params.fromAmount, 6),
-    toAmount: toAmountRaw,
-    toAmountFormatted: formatAmount(toAmountRaw, 6),
-    estimatedDurationSeconds: duration,
-    fees: {
-      gasCostUsd: '3.00',
-      protocolFeeUsd: '1.50',
-    },
-    status: 'pending',
-  }];
-
-  return {
-    routeId: `simulated_${Date.now()}`,
-    fromChainId: params.fromChainId,
-    fromChain: { chainId: params.fromChainId, name: fromChainName },
-    toChainId: params.toChainId,
-    toChain: { chainId: params.toChainId, name: toChainName },
-    fromToken: params.fromTokenAddress,
-    fromTokenInfo: {
-      address: params.fromTokenAddress,
-      symbol: 'TOKEN',
-      decimals: 6,
-    },
-    toToken: params.toTokenAddress,
-    toTokenInfo: {
-      address: params.toTokenAddress,
-      symbol: 'TOKEN',
-      decimals: 6,
-    },
-    fromAmount: params.fromAmount,
-    fromAmountFormatted: formatAmount(params.fromAmount, 6),
-    fromAmountUsd: formatAmount(params.fromAmount, 6),
-    toAmount: toAmountRaw,
-    toAmountFormatted: formatAmount(toAmountRaw, 6),
-    toAmountUsd: formatAmount(toAmountRaw, 6),
-    toAmountMin,
-    exchangeRate: '1.00',
-    slippage: '0.5',
-    estimatedDurationSeconds: duration,
-    estimatedDurationFormatted: formatDuration(duration),
-    fees: {
-      gasCostNative: '0.002',
-      gasCostUsd: '3.00',
-      protocolFeeUsd: '1.50',
-      totalFeeUsd: '4.50',
-    },
-    estimatedGas: '0.002',
-    steps,
-    tags: ['SIMULATED'],
+    tags: route.tags || [],
   };
 }
