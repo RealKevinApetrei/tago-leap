@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { useAccount, useSignTypedData, useChainId, useSwitchChain } from 'wagmi';
+import { useAccount, useWalletClient, useChainId } from 'wagmi';
 import { pearApi } from '@/lib/api';
 
-// Hyperliquid uses Arbitrum for signing
-const ARBITRUM_CHAIN_ID = 42161;
+// Supported chains for Hyperliquid signing (Arbitrum mainnet and testnet)
+const SUPPORTED_CHAIN_IDS = [42161, 421614]; // Arbitrum One, Arbitrum Sepolia
 
 interface UseAgentWalletReturn {
   agentWalletAddress: string | null;
@@ -30,9 +30,8 @@ interface UseAgentWalletReturn {
  */
 export function useAgentWallet(): UseAgentWalletReturn {
   const { address, isConnected } = useAccount();
-  const { signTypedDataAsync } = useSignTypedData();
-  const { switchChainAsync } = useSwitchChain();
-  const currentChainId = useChainId();
+  const { data: walletClient } = useWalletClient();
+  const chainId = useChainId();
 
   const [agentWalletAddress, setAgentWalletAddress] = useState<string | null>(null);
   const [exists, setExists] = useState(false);
@@ -81,10 +80,9 @@ export function useAgentWallet(): UseAgentWalletReturn {
     try {
       const result = await pearApi.createAgentWallet(address);
       setAgentWalletAddress(result.agentWalletAddress);
-      // Agent wallet created - Pear handles the approval internally
-      // Mark as exists so we can proceed
-      setExists(true);
-      setNeedsApproval(false);
+      // Agent wallet created on Pear side, but user must approve on Hyperliquid
+      setExists(false); // Not ready until Hyperliquid approval
+      setNeedsApproval(true);
       return result.agentWalletAddress;
     } catch (err: any) {
       console.error('[useAgentWallet] Failed to create:', err);
@@ -103,56 +101,56 @@ export function useAgentWallet(): UseAgentWalletReturn {
       return;
     }
 
+    if (!walletClient) {
+      setError('Wallet client not ready');
+      return;
+    }
+
     setIsApproving(true);
     setError(null);
 
-    const originalChainId = currentChainId;
-
     try {
-      // Switch to Arbitrum if needed (Hyperliquid uses Arbitrum for signing)
-      if (currentChainId !== ARBITRUM_CHAIN_ID) {
-        console.log('[useAgentWallet] Switching to Arbitrum for signing');
-        await switchChainAsync({ chainId: ARBITRUM_CHAIN_ID });
-      }
+      const nonce = Date.now();
 
-      // EIP-712 domain for Hyperliquid agent approval
+      // EIP-712 domain for Hyperliquid - omit chainId to avoid wallet validation issues
+      // The signatureChainId in the action payload tells Hyperliquid how to verify
       const domain = {
         name: 'HyperliquidSignTransaction',
         version: '1',
-        chainId: ARBITRUM_CHAIN_ID,
         verifyingContract: '0x0000000000000000000000000000000000000000' as `0x${string}`,
-      };
+      } as const;
 
+      // EIP-712 types for approveAgent action
       const types = {
-        HyperliquidTransaction: [
-          { name: 'source', type: 'string' },
-          { name: 'connectionId', type: 'bytes32' },
+        'HyperliquidTransaction:ApproveAgent': [
+          { name: 'hyperliquidChain', type: 'string' },
+          { name: 'agentAddress', type: 'address' },
+          { name: 'agentName', type: 'string' },
+          { name: 'nonce', type: 'uint64' },
         ],
-        Agent: [
-          { name: 'source', type: 'string' },
-          { name: 'connectionId', type: 'bytes32' },
-        ],
-      };
-
-      // Create the connection ID (hash of agent address + timestamp)
-      const nonce = Date.now();
-      const connectionId = `0x${'0'.repeat(64)}` as `0x${string}`; // Placeholder - Hyperliquid generates this
+      } as const;
 
       const message = {
-        source: 'a', // 'a' = approve agent
-        connectionId,
+        hyperliquidChain: 'Mainnet',
+        agentAddress: agentAddress as `0x${string}`,
+        agentName: 'Pear Protocol',
+        nonce: BigInt(nonce),
       };
 
-      // Sign the approval message
-      const signature = await signTypedDataAsync({
+      console.log('[useAgentWallet] Signing agent approval:', { agentAddress, nonce });
+
+      // Sign the approval message using wallet client directly
+      const signature = await walletClient.signTypedData({
+        account: address,
         domain,
         types,
-        primaryType: 'Agent',
+        primaryType: 'HyperliquidTransaction:ApproveAgent',
         message,
       });
 
+      console.log('[useAgentWallet] Got signature, sending to Hyperliquid');
+
       // Send approval to Hyperliquid API
-      // Note: This happens directly with Hyperliquid, not through our backend
       const response = await fetch('https://api.hyperliquid.xyz/exchange', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -160,7 +158,7 @@ export function useAgentWallet(): UseAgentWalletReturn {
           action: {
             type: 'approveAgent',
             hyperliquidChain: 'Mainnet',
-            signatureChainId: `0x${ARBITRUM_CHAIN_ID.toString(16)}`,
+            signatureChainId: '0x66eee',
             agentAddress,
             agentName: 'Pear Protocol',
             nonce,
@@ -170,27 +168,36 @@ export function useAgentWallet(): UseAgentWalletReturn {
         }),
       });
 
+      const responseText = await response.text();
+      console.log('[useAgentWallet] Hyperliquid response:', responseText);
+
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Hyperliquid approval failed: ${errorText}`);
+        throw new Error(`Hyperliquid approval failed: ${responseText}`);
       }
 
-      // Refresh status to confirm approval
-      await checkStatus();
+      // Check for error in response body
+      try {
+        const responseData = JSON.parse(responseText);
+        if (responseData.status === 'err') {
+          throw new Error(responseData.response || 'Approval failed');
+        }
+      } catch {
+        // Response might not be JSON, that's okay
+      }
+
+      // Mark as approved and refresh status
+      setExists(true);
       setNeedsApproval(false);
+      await checkStatus();
 
-      // Switch back to original chain if needed
-      if (originalChainId !== ARBITRUM_CHAIN_ID) {
-        console.log('[useAgentWallet] Switching back to original chain');
-        await switchChainAsync({ chainId: originalChainId });
-      }
+      console.log('[useAgentWallet] Agent wallet approved successfully');
     } catch (err: any) {
       console.error('[useAgentWallet] Approval failed:', err);
       setError(err?.message || 'Failed to approve agent wallet');
     } finally {
       setIsApproving(false);
     }
-  }, [address, signTypedDataAsync, switchChainAsync, currentChainId, checkStatus]);
+  }, [address, walletClient, checkStatus]);
 
   // Check status on mount and when address changes
   useEffect(() => {

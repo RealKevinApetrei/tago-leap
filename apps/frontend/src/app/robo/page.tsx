@@ -12,6 +12,7 @@ import { pearApi, saltApi, NarrativeSuggestion } from '@/lib/api';
 import { usePearAuth } from '@/hooks/usePearAuth';
 import { useSaltAccount } from '@/hooks/useSaltAccount';
 import { useAgentWallet } from '@/hooks/useAgentWallet';
+import { useBuilderFee } from '@/hooks/useBuilderFee';
 import { usePositions } from '@/hooks/usePositions';
 import { useStrategies } from '@/hooks/useStrategies';
 
@@ -37,12 +38,23 @@ export default function RoboPage() {
     refreshTrades,
   } = useSaltAccount();
   const {
+    agentWalletAddress,
     exists: agentWalletExists,
     isLoading: agentWalletLoading,
     isCreating: agentWalletCreating,
+    isApproving: agentWalletApproving,
+    needsApproval: agentWalletNeedsApproval,
     error: agentWalletError,
     createAgentWallet,
+    approveAgentWallet,
   } = useAgentWallet();
+  const {
+    isApproved: builderFeeApproved,
+    isLoading: builderFeeLoading,
+    isApproving: builderFeeApproving,
+    error: builderFeeError,
+    approveBuilderFee,
+  } = useBuilderFee();
   const {
     positions,
     isLoading: positionsLoading,
@@ -262,25 +274,74 @@ export default function RoboPage() {
     );
   }
 
-  // Step 3: Setup Agent Wallet
+  // Step 3: Setup Agent Wallet (Create + Approve on Hyperliquid)
   if (!agentWalletExists && !agentWalletLoading) {
+    // Sub-step: Need to create agent wallet first
+    if (!agentWalletAddress && !agentWalletNeedsApproval) {
+      return (
+        <div className="space-y-6">
+          <Card>
+            <div className="p-4 flex items-center justify-between">
+              <div>
+                <span className="text-xs text-white/40 font-light">Authenticated</span>
+                <p className="text-sm text-white font-mono">{address?.slice(0, 6)}...{address?.slice(-4)}</p>
+              </div>
+              <Badge variant="success">Ready</Badge>
+            </div>
+          </Card>
+
+          <SwapPanel title="Setup Agent Wallet" subtitle="Step 1: Create wallet">
+            <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08]">
+              <p className="text-sm text-white/60 font-light leading-relaxed">
+                Create an agent wallet to allow Pear Protocol to execute trades on Hyperliquid on your behalf.
+              </p>
+            </div>
+
+            {agentWalletError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                <p className="text-sm text-red-400">{agentWalletError}</p>
+              </div>
+            )}
+
+            <Button
+              variant="yellow"
+              fullWidth
+              size="lg"
+              onClick={() => createAgentWallet()}
+              loading={agentWalletCreating}
+            >
+              {agentWalletCreating ? 'Creating...' : 'Create Agent Wallet'}
+            </Button>
+          </SwapPanel>
+        </div>
+      );
+    }
+
+    // Sub-step: Agent wallet created, need Hyperliquid approval
     return (
       <div className="space-y-6">
         <Card>
           <div className="p-4 flex items-center justify-between">
             <div>
-              <span className="text-xs text-white/40 font-light">Authenticated</span>
-              <p className="text-sm text-white font-mono">{address?.slice(0, 6)}...{address?.slice(-4)}</p>
+              <span className="text-xs text-white/40 font-light">Agent Wallet Created</span>
+              <p className="text-sm text-white font-mono">{agentWalletAddress?.slice(0, 6)}...{agentWalletAddress?.slice(-4)}</p>
             </div>
-            <Badge variant="success">Ready</Badge>
+            <Badge variant="warning">Pending Approval</Badge>
           </div>
         </Card>
 
-        <SwapPanel title="Setup Agent Wallet" subtitle="Enable trading on Hyperliquid">
-          <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08]">
+        <SwapPanel title="Approve on Hyperliquid" subtitle="Step 2: Sign approval">
+          <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08] space-y-3">
             <p className="text-sm text-white/60 font-light leading-relaxed">
-              Create an agent wallet to allow Pear Protocol to execute trades on Hyperliquid on your behalf.
+              Sign a message to approve Pear Protocol to trade on Hyperliquid on your behalf. This is a one-time approval.
             </p>
+            <div className="text-xs text-white/40 space-y-1">
+              <p>After approval, you also need to:</p>
+              <ul className="list-disc list-inside space-y-1 ml-2">
+                <li>Deposit USDC to Hyperliquid</li>
+                <li>Approve builder fee (0.06% per trade)</li>
+              </ul>
+            </div>
           </div>
 
           {agentWalletError && (
@@ -293,11 +354,78 @@ export default function RoboPage() {
             variant="yellow"
             fullWidth
             size="lg"
-            onClick={() => createAgentWallet()}
-            loading={agentWalletCreating}
+            onClick={() => agentWalletAddress && approveAgentWallet(agentWalletAddress)}
+            loading={agentWalletApproving}
           >
-            {agentWalletCreating ? 'Creating...' : 'Create Agent Wallet'}
+            {agentWalletApproving ? 'Approving...' : 'Approve Agent Wallet'}
           </Button>
+
+          <div className="text-center">
+            <a
+              href="https://app.hyperliquid.xyz"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-tago-yellow-400 hover:underline"
+            >
+              Open Hyperliquid to deposit USDC
+            </a>
+          </div>
+        </SwapPanel>
+      </div>
+    );
+  }
+
+  // Step 3.5: Approve Builder Fee on Hyperliquid
+  if (!builderFeeApproved && !builderFeeLoading) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <div className="p-4 flex items-center justify-between">
+            <div>
+              <span className="text-xs text-white/40 font-light">Agent Wallet</span>
+              <p className="text-sm text-white font-mono">{agentWalletAddress?.slice(0, 6)}...{agentWalletAddress?.slice(-4)}</p>
+            </div>
+            <Badge variant="success">Approved</Badge>
+          </div>
+        </Card>
+
+        <SwapPanel title="Approve Builder Fee" subtitle="Step 3: Enable trading fees">
+          <div className="bg-white/[0.03] rounded-xl p-4 border border-white/[0.08] space-y-3">
+            <p className="text-sm text-white/60 font-light leading-relaxed">
+              Authorize Pear Protocol to collect a small trading fee (0.1% max) on each trade. This is required by Hyperliquid for all builder integrations.
+            </p>
+            <div className="text-xs text-white/40">
+              <p>Pear builder address:</p>
+              <p className="font-mono text-white/60 break-all">0xA47D4d99191db54A4829cdf3de2417E527c3b042</p>
+            </div>
+          </div>
+
+          {builderFeeError && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+              <p className="text-sm text-red-400">{builderFeeError}</p>
+            </div>
+          )}
+
+          <Button
+            variant="yellow"
+            fullWidth
+            size="lg"
+            onClick={approveBuilderFee}
+            loading={builderFeeApproving}
+          >
+            {builderFeeApproving ? 'Approving...' : 'Approve Builder Fee'}
+          </Button>
+
+          <div className="text-center">
+            <a
+              href="https://app.hyperliquid.xyz"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-tago-yellow-400 hover:underline"
+            >
+              Make sure you have USDC deposited on Hyperliquid
+            </a>
+          </div>
         </SwapPanel>
       </div>
     );
@@ -310,10 +438,10 @@ export default function RoboPage() {
         <Card>
           <div className="p-4 flex items-center justify-between">
             <div>
-              <span className="text-xs text-white/40 font-light">Agent Wallet Ready</span>
+              <span className="text-xs text-white/40 font-light">Hyperliquid Ready</span>
               <p className="text-sm text-white font-mono">{address?.slice(0, 6)}...{address?.slice(-4)}</p>
             </div>
-            <Badge variant="success">Ready</Badge>
+            <Badge variant="success">All Approvals Complete</Badge>
           </div>
         </Card>
 
