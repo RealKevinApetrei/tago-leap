@@ -9,10 +9,19 @@ export const defaultPolicy: SaltPolicyInput = {
   maxLeverage: 5,
   maxDailyNotionalUsd: 50000,
   allowedPairs: [
+    // Major coins
     'BTC', 'ETH', 'SOL', 'DOGE', 'AVAX', 'LINK', 'ARB', 'OP',
     'WIF', 'PEPE', 'SUI', 'APT', 'INJ', 'TIA', 'SEI', 'JUP',
     'RENDER', 'TAO', 'FET', 'DOT', 'ATOM', 'NEAR', 'FTM', 'MATIC',
     'LTC', 'BCH', 'XRP', 'ADA', 'HBAR', 'UNI', 'AAVE', 'MKR',
+    // AI tokens
+    'AI16Z', 'VIRTUAL', 'AIXBT', 'ZEREBRO', 'GOAT', 'FARTCOIN', 'GRIFFAIN', 'ARC',
+    // Memes & trending
+    'TRUMP', 'BONK', 'POPCAT', 'MOG', 'GIGA', 'MOODENG', 'PNUT', 'CHILLGUY',
+    'PENGU', 'HYPE', 'ME', 'MOVE', 'USUAL', 'ENA', 'ONDO', 'ETHFI',
+    // DeFi & others
+    'CRV', 'LDO', 'FXS', 'GMX', 'DYDX', 'SNX', 'COMP', 'YFI',
+    'BLUR', 'STRK', 'ZK', 'W', 'DYM', 'PYTH', 'JTO', 'TNSR',
   ],
   maxDrawdownPct: 15,
 };
