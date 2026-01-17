@@ -211,20 +211,26 @@ export default function RoboPage() {
   const removeAsset = (side: 'long' | 'short', assetToRemove: string) => {
     if (!suggestion) return;
     const assets = side === 'long' ? suggestion.longAssets : suggestion.shortAssets;
+    const otherSide = side === 'long' ? suggestion.shortAssets : suggestion.longAssets;
     const filtered = assets.filter(a => a.asset !== assetToRemove);
 
-    // Don't allow removing all assets from a side
-    if (filtered.length === 0) {
-      showToast('error', `Cannot remove all ${side} assets`);
+    // Allow removing all assets from one side (long-only or short-only trades)
+    // But don't allow removing all assets from BOTH sides
+    if (filtered.length === 0 && otherSide.length === 0) {
+      showToast('error', 'Cannot remove all assets - need at least one side');
       return;
     }
 
-    // Redistribute weights among remaining assets
-    const totalWeight = filtered.reduce((sum, a) => sum + a.weight, 0);
-    const normalizedAssets = filtered.map(a => ({
-      ...a,
-      weight: totalWeight > 0 ? a.weight / totalWeight : 1 / filtered.length
-    }));
+    // Redistribute weights among remaining assets (if any)
+    const normalizedAssets = filtered.length > 0
+      ? (() => {
+          const totalWeight = filtered.reduce((sum, a) => sum + a.weight, 0);
+          return filtered.map(a => ({
+            ...a,
+            weight: totalWeight > 0 ? a.weight / totalWeight : 1 / filtered.length
+          }));
+        })()
+      : [];
 
     setSuggestion({
       ...suggestion,
