@@ -129,10 +129,19 @@ export async function tradesRoutes(app: FastifyInstance) {
       return reply.badRequest('Leverage must be between 1 and 100');
     }
 
-    // Hyperliquid requires minimum $10 notional
+    // Hyperliquid requires minimum $10 notional per position
     const notional = stakeUsd * leverage;
-    if (notional < 10) {
-      return reply.badRequest(`Minimum notional is $10. Your trade is $${notional.toFixed(2)} (${stakeUsd} × ${leverage}x). Hyperliquid rejects smaller orders.`);
+    const totalAssets = longAssetsList.length + shortAssetsList.length;
+    const minNotionalPerAsset = 10;
+    const minTotalNotional = Math.max(10, totalAssets * minNotionalPerAsset);
+
+    if (notional < minTotalNotional) {
+      return reply.badRequest(
+        `Minimum notional not met. Hyperliquid requires ~$10 per position. ` +
+        `With ${totalAssets} assets, you need at least $${minTotalNotional} total notional. ` +
+        `Your trade: $${notional.toFixed(2)} (${stakeUsd} × ${leverage}x). ` +
+        `Increase stake, leverage, or reduce number of assets.`
+      );
     }
 
     // If source is 'salt', require accountRef

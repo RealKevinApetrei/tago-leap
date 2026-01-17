@@ -271,6 +271,28 @@ export default function RoboPage() {
       return;
     }
 
+    // Check per-asset minimum notional (Hyperliquid requires ~$10 per position)
+    const totalAssets = activeLongAssets.length + activeShortAssets.length;
+    const minNotionalPerAsset = 10;
+    const minTotalNotional = totalAssets * minNotionalPerAsset;
+
+    if (notionalRequired < minTotalNotional) {
+      const allAssets = [...activeLongAssets, ...activeShortAssets];
+      const smallestAllocation = Math.min(...allAssets.map(a => a.weight * notionalRequired));
+      showToast(
+        'error',
+        `Per-asset minimum not met`,
+        undefined,
+        [
+          `Hyperliquid requires ~$10 minimum per position.`,
+          `With ${totalAssets} assets, you need at least $${minTotalNotional} total notional.`,
+          `Current: $${notionalRequired.toFixed(2)} (smallest position: $${smallestAllocation.toFixed(2)})`,
+          `Increase stake, leverage, or reduce number of assets.`
+        ]
+      );
+      return;
+    }
+
     setExecuting(true);
     setToast(null);
 

@@ -1,22 +1,51 @@
 #!/usr/bin/env python3
 """
-TAGO Leap Hackathon Pitch Deck Generator
-Creates a world-class PowerPoint presentation with full branding
+TAGO Leap Hackathon Pitch Deck Generator v2.0
+World-class startup pitch with proper branding
 """
 
 from pptx import Presentation
-from pptx.util import Inches, Pt
+from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
+from pptx.oxml.ns import qn
+from pptx.oxml import parse_xml
 import os
 
-# Brand Colors
+# =============================================================================
+# BRAND DESIGN SYSTEM
+# =============================================================================
+
+# Brand Colors (from BRAND_KIT.md)
 BLACK = RGBColor(0, 0, 0)
 WHITE = RGBColor(255, 255, 255)
-YELLOW = RGBColor(255, 214, 51)  # #FFD633
-GRAY = RGBColor(128, 128, 128)
-DARK_GRAY = RGBColor(40, 40, 40)
+YELLOW = RGBColor(255, 214, 51)      # #FFD633 - Primary accent
+YELLOW_DARK = RGBColor(230, 184, 0)  # #E6B800 - Hover/active
+
+# Opacity-based grays (simulated on black background)
+GRAY_50 = RGBColor(242, 242, 242)    # white @ 95%
+GRAY_100 = RGBColor(217, 217, 217)   # white @ 85%
+GRAY_200 = RGBColor(179, 179, 179)   # white @ 70% - Body text
+GRAY_300 = RGBColor(153, 153, 153)   # white @ 60%
+GRAY_400 = RGBColor(102, 102, 102)   # white @ 40% - Captions
+GRAY_500 = RGBColor(51, 51, 51)      # white @ 20%
+GRAY_600 = RGBColor(26, 26, 26)      # white @ 10% - Card backgrounds
+GRAY_700 = RGBColor(13, 13, 13)      # white @ 5%
+
+# Brand Fonts
+FONT_PRIMARY = "Inter"
+FONT_ALT = "Space Grotesk"
+FONT_MONO = "Source Code Pro"
+
+# Layout Constants
+MARGIN = 0.8  # inches
+SLIDE_WIDTH = 13.333
+SLIDE_HEIGHT = 7.5
+
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
 
 def set_slide_background(slide, color=BLACK):
     """Set slide background color"""
@@ -25,545 +54,754 @@ def set_slide_background(slide, color=BLACK):
     fill.solid()
     fill.fore_color.rgb = color
 
-def add_text_box(slide, left, top, width, height, text, font_size=18,
-                 font_color=WHITE, bold=False, italic=False, align=PP_ALIGN.LEFT,
-                 font_name="Arial"):
-    """Add a text box with styling"""
+
+def add_text_box(slide, left, top, width, height, text,
+                 font_size=18, font_color=WHITE, font_name=FONT_PRIMARY,
+                 bold=False, italic=False, align=PP_ALIGN.LEFT,
+                 vertical_anchor=MSO_ANCHOR.TOP):
+    """Add a styled text box"""
     txBox = slide.shapes.add_textbox(Inches(left), Inches(top),
                                       Inches(width), Inches(height))
     tf = txBox.text_frame
     tf.word_wrap = True
+    tf.auto_size = False
+
+    # Set vertical alignment
+    try:
+        tf.anchor = vertical_anchor
+    except:
+        pass
+
     p = tf.paragraphs[0]
     p.text = text
     p.font.size = Pt(font_size)
     p.font.color.rgb = font_color
+    p.font.name = font_name
     p.font.bold = bold
     p.font.italic = italic
-    p.font.name = font_name
     p.alignment = align
+
     return txBox
 
-def add_bullet_points(slide, left, top, width, height, points, font_size=16,
-                      font_color=WHITE, bullet_color=YELLOW):
-    """Add bullet points"""
+
+def add_styled_heading(slide, left, top, width, height,
+                       prefix="", accent="", suffix="",
+                       font_size=48, align=PP_ALIGN.LEFT):
+    """Add heading with italic yellow accent word
+    Example: add_styled_heading(..., prefix="", accent="Trade", suffix=" Ideas")
+    Results in: "Trade" in yellow italic, " Ideas" in white
+    """
+    txBox = slide.shapes.add_textbox(Inches(left), Inches(top),
+                                      Inches(width), Inches(height))
+    tf = txBox.text_frame
+    tf.word_wrap = True
+    p = tf.paragraphs[0]
+    p.alignment = align
+
+    # Add prefix (white, light)
+    if prefix:
+        run = p.add_run()
+        run.text = prefix
+        run.font.size = Pt(font_size)
+        run.font.color.rgb = WHITE
+        run.font.name = FONT_PRIMARY
+        run.font.bold = False
+
+    # Add accent word (yellow, italic)
+    if accent:
+        run = p.add_run()
+        run.text = accent
+        run.font.size = Pt(font_size)
+        run.font.color.rgb = YELLOW
+        run.font.name = FONT_PRIMARY
+        run.font.italic = True
+        run.font.bold = False
+
+    # Add suffix (white, light)
+    if suffix:
+        run = p.add_run()
+        run.text = suffix
+        run.font.size = Pt(font_size)
+        run.font.color.rgb = WHITE
+        run.font.name = FONT_PRIMARY
+        run.font.bold = False
+
+    return txBox
+
+
+def add_bullet_list(slide, left, top, width, height, items,
+                    font_size=18, font_color=GRAY_200):
+    """Add elegant bullet list"""
     txBox = slide.shapes.add_textbox(Inches(left), Inches(top),
                                       Inches(width), Inches(height))
     tf = txBox.text_frame
     tf.word_wrap = True
 
-    for i, point in enumerate(points):
+    for i, item in enumerate(items):
         if i == 0:
             p = tf.paragraphs[0]
         else:
             p = tf.add_paragraph()
-        p.text = f"• {point}"
+
+        p.text = f"→  {item}"
         p.font.size = Pt(font_size)
         p.font.color.rgb = font_color
-        p.font.name = "Arial"
-        p.space_before = Pt(8)
-        p.space_after = Pt(4)
+        p.font.name = FONT_PRIMARY
+        p.space_before = Pt(12)
+        p.space_after = Pt(6)
+
     return txBox
 
-def add_yellow_accent_box(slide, left, top, width, height, text, subtitle=""):
-    """Add a yellow accent box for key stats"""
+
+def add_card(slide, left, top, width, height, has_border=True, border_color=GRAY_600):
+    """Add a card with rounded corners and subtle border"""
     shape = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
                                     Inches(left), Inches(top),
                                     Inches(width), Inches(height))
     shape.fill.solid()
-    shape.fill.fore_color.rgb = YELLOW
-    shape.line.fill.background()
+    shape.fill.fore_color.rgb = GRAY_700
 
-    # Add text
-    tf = shape.text_frame
-    tf.word_wrap = True
-    p = tf.paragraphs[0]
-    p.text = text
-    p.font.size = Pt(24)
-    p.font.color.rgb = BLACK
-    p.font.bold = True
-    p.font.name = "Arial"
-    p.alignment = PP_ALIGN.CENTER
+    if has_border:
+        shape.line.color.rgb = border_color
+        shape.line.width = Pt(1)
+    else:
+        shape.line.fill.background()
 
-    if subtitle:
-        p2 = tf.add_paragraph()
-        p2.text = subtitle
-        p2.font.size = Pt(12)
-        p2.font.color.rgb = BLACK
-        p2.font.name = "Arial"
-        p2.alignment = PP_ALIGN.CENTER
+    # Adjust corner radius (via XML manipulation)
+    try:
+        spPr = shape._sp.spPr
+        prstGeom = spPr.prstGeom
+        avLst = prstGeom.avLst
+        if avLst is None:
+            avLst = parse_xml('<a:avLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>')
+            prstGeom.append(avLst)
+        # Set corner radius to ~20% for rounded-2xl effect
+        gd = parse_xml('<a:gd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="adj" fmla="val 15000"/>')
+        avLst.append(gd)
+    except:
+        pass
 
     return shape
 
-def add_bounty_badge(slide, left, top, bounty_name, color=YELLOW):
-    """Add a bounty badge"""
+
+def add_badge(slide, left, top, text, bg_color=YELLOW, text_color=BLACK, width=1.4):
+    """Add a small badge/pill"""
     shape = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
                                     Inches(left), Inches(top),
-                                    Inches(1.2), Inches(0.4))
+                                    Inches(width), Inches(0.4))
     shape.fill.solid()
-    shape.fill.fore_color.rgb = color
+    shape.fill.fore_color.rgb = bg_color
     shape.line.fill.background()
 
     tf = shape.text_frame
+    tf.word_wrap = False
+    try:
+        tf.anchor = MSO_ANCHOR.MIDDLE
+    except:
+        pass
+
     p = tf.paragraphs[0]
-    p.text = bounty_name
+    p.text = text
     p.font.size = Pt(12)
-    p.font.color.rgb = BLACK
+    p.font.color.rgb = text_color
+    p.font.name = FONT_PRIMARY
     p.font.bold = True
-    p.font.name = "Arial"
     p.alignment = PP_ALIGN.CENTER
+
     return shape
+
+
+def add_stat_box(slide, left, top, width, height, number, label):
+    """Add a stat/metric box"""
+    # Card background
+    card = add_card(slide, left, top, width, height, has_border=True, border_color=YELLOW)
+
+    # Number
+    add_text_box(slide, left, top + 0.2, width, 0.6, number,
+                 font_size=36, font_color=YELLOW, bold=False,
+                 align=PP_ALIGN.CENTER)
+
+    # Label
+    add_text_box(slide, left, top + 0.7, width, 0.4, label,
+                 font_size=14, font_color=GRAY_300,
+                 align=PP_ALIGN.CENTER)
+
+    return card
+
+
+def add_flow_arrow(slide, left, top):
+    """Add a simple arrow for flow diagrams"""
+    add_text_box(slide, left, top, 0.6, 0.5, "→",
+                 font_size=28, font_color=YELLOW, align=PP_ALIGN.CENTER)
+
+
+def add_flow_box(slide, left, top, width, text, is_highlight=False):
+    """Add a box for flow diagrams"""
+    bg_color = YELLOW if is_highlight else GRAY_700
+    text_color = BLACK if is_highlight else WHITE
+    border_color = YELLOW if not is_highlight else None
+
+    shape = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
+                                    Inches(left), Inches(top),
+                                    Inches(width), Inches(0.6))
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = bg_color
+
+    if border_color and not is_highlight:
+        shape.line.color.rgb = border_color
+        shape.line.width = Pt(1)
+    else:
+        shape.line.fill.background()
+
+    tf = shape.text_frame
+    try:
+        tf.anchor = MSO_ANCHOR.MIDDLE
+    except:
+        pass
+
+    p = tf.paragraphs[0]
+    p.text = text
+    p.font.size = Pt(13)
+    p.font.color.rgb = text_color
+    p.font.name = FONT_PRIMARY
+    p.font.bold = is_highlight
+    p.alignment = PP_ALIGN.CENTER
+
+    return shape
+
+
+# =============================================================================
+# SLIDE CREATION
+# =============================================================================
 
 def create_presentation():
     prs = Presentation()
-    prs.slide_width = Inches(13.333)
-    prs.slide_height = Inches(7.5)
+    prs.slide_width = Inches(SLIDE_WIDTH)
+    prs.slide_height = Inches(SLIDE_HEIGHT)
 
     # =========================================================================
-    # SLIDE 1: Title Slide
+    # SLIDE 1: Title
     # =========================================================================
-    slide1 = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+    slide1 = prs.slides.add_slide(prs.slide_layouts[6])
     set_slide_background(slide1)
 
-    # Yellow border frame (top)
-    top_border = slide1.shapes.add_shape(MSO_SHAPE.RECTANGLE,
-                                          Inches(0.5), Inches(0.3),
-                                          Inches(12.333), Inches(0.05))
-    top_border.fill.solid()
-    top_border.fill.fore_color.rgb = YELLOW
-    top_border.line.fill.background()
+    # Top accent line
+    line = slide1.shapes.add_shape(MSO_SHAPE.RECTANGLE,
+                                    Inches(MARGIN), Inches(0.4),
+                                    Inches(SLIDE_WIDTH - 2*MARGIN), Inches(0.03))
+    line.fill.solid()
+    line.fill.fore_color.rgb = YELLOW
+    line.line.fill.background()
 
-    # Logo text - TAGO
-    add_text_box(slide1, 0.5, 0.8, 12.333, 1.5, "TAGO",
-                 font_size=96, font_color=WHITE, bold=True,
+    # Main title - TAGO
+    add_text_box(slide1, MARGIN, 1.8, SLIDE_WIDTH - 2*MARGIN, 1.2, "TAGO",
+                 font_size=120, font_color=WHITE, bold=False,
                  align=PP_ALIGN.CENTER)
 
-    # LEAP with yellow accent
-    add_text_box(slide1, 0.5, 2.2, 12.333, 1, "LEAP",
-                 font_size=72, font_color=YELLOW, bold=True, italic=True,
+    # LEAP in yellow italic
+    add_text_box(slide1, MARGIN, 3.2, SLIDE_WIDTH - 2*MARGIN, 0.9, "LEAP",
+                 font_size=80, font_color=YELLOW, italic=True, bold=False,
                  align=PP_ALIGN.CENTER)
 
     # Tagline
-    add_text_box(slide1, 0.5, 3.5, 12.333, 0.8,
-                 "Trade ideas, not tokens",
-                 font_size=28, font_color=WHITE, italic=True,
+    add_text_box(slide1, MARGIN, 4.4, SLIDE_WIDTH - 2*MARGIN, 0.5,
+                 "Trade ideas, not tokens.",
+                 font_size=24, font_color=WHITE, italic=True,
                  align=PP_ALIGN.CENTER)
 
     # Subtitle
-    add_text_box(slide1, 0.5, 4.3, 12.333, 0.6,
+    add_text_box(slide1, MARGIN, 5.0, SLIDE_WIDTH - 2*MARGIN, 0.4,
                  "AI-Powered Narrative Trading on Hyperliquid",
-                 font_size=20, font_color=GRAY,
+                 font_size=16, font_color=GRAY_300,
                  align=PP_ALIGN.CENTER)
 
-    # Three bounty badges
-    add_bounty_badge(slide1, 4.5, 5.5, "PEAR")
-    add_bounty_badge(slide1, 6.0, 5.5, "LIFI")
-    add_bounty_badge(slide1, 7.5, 5.5, "SALT")
+    # Bounty badges - centered
+    badge_y = 5.8
+    add_badge(slide1, 4.8, badge_y, "PEAR")
+    add_badge(slide1, 6.4, badge_y, "LI.FI")
+    add_badge(slide1, 8.0, badge_y, "SALT")
 
     # Bottom text
-    add_text_box(slide1, 0.5, 6.5, 12.333, 0.5,
+    add_text_box(slide1, MARGIN, 6.8, SLIDE_WIDTH - 2*MARGIN, 0.3,
                  "Hyperstack Hackathon 2025",
-                 font_size=14, font_color=GRAY,
+                 font_size=12, font_color=GRAY_400,
                  align=PP_ALIGN.CENTER)
 
-    # Yellow border (bottom)
-    bottom_border = slide1.shapes.add_shape(MSO_SHAPE.RECTANGLE,
-                                             Inches(0.5), Inches(7.15),
-                                             Inches(12.333), Inches(0.05))
-    bottom_border.fill.solid()
-    bottom_border.fill.fore_color.rgb = YELLOW
-    bottom_border.line.fill.background()
+    # Bottom accent line
+    line2 = slide1.shapes.add_shape(MSO_SHAPE.RECTANGLE,
+                                     Inches(MARGIN), Inches(7.1),
+                                     Inches(SLIDE_WIDTH - 2*MARGIN), Inches(0.03))
+    line2.fill.solid()
+    line2.fill.fore_color.rgb = YELLOW
+    line2.line.fill.background()
 
     # =========================================================================
-    # SLIDE 2: Problem Statement
+    # SLIDE 2: The Opportunity
     # =========================================================================
     slide2 = prs.slides.add_slide(prs.slide_layouts[6])
     set_slide_background(slide2)
 
-    add_text_box(slide2, 0.5, 0.5, 12.333, 0.8, "The Problem",
-                 font_size=44, font_color=YELLOW, bold=True)
+    add_styled_heading(slide2, MARGIN, 0.6, 10, 0.8,
+                       prefix="The ", accent="Opportunity", suffix="",
+                       font_size=48)
 
-    problems = [
-        "Trading is complex - Users manage raw tokens, not market theses",
-        "Fragmented onboarding - Bridging from other chains is painful",
-        "Risk management is manual - No automated guardrails for traders",
-        "No narrative trading - Can't express 'AI will outperform ETH' easily",
-        "Custody concerns - Automation tools often require giving up control"
+    add_text_box(slide2, MARGIN, 1.4, 8, 0.5,
+                 "Hyperliquid is the fastest-growing perps DEX. But onboarding and trading are still too complex.",
+                 font_size=18, font_color=GRAY_200, italic=True)
+
+    # Stats row
+    stats = [
+        ("$50B+", "Daily Volume"),
+        ("150K+", "Active Traders"),
+        ("5+ Steps", "To Start Trading"),
+        ("0", "Narrative Trading Tools")
     ]
 
-    add_bullet_points(slide2, 0.8, 1.8, 11, 4.5, problems, font_size=24)
+    x_start = 0.8
+    for i, (num, label) in enumerate(stats):
+        add_stat_box(slide2, x_start + i * 3.1, 2.5, 2.8, 1.2, num, label)
 
-    # Stats boxes
-    add_yellow_accent_box(slide2, 1, 5.5, 3, 1.2, "5+ Steps", "To bridge & trade")
-    add_yellow_accent_box(slide2, 5, 5.5, 3, 1.2, "0 Tools", "For narrative trading")
-    add_yellow_accent_box(slide2, 9, 5.5, 3, 1.2, "100%", "Manual risk mgmt")
+    # Problem bullets
+    add_text_box(slide2, MARGIN, 4.2, 6, 0.5, "Current Pain Points",
+                 font_size=20, font_color=YELLOW, bold=False)
+
+    problems = [
+        "Bridging from other chains requires multiple transactions",
+        "Trading interfaces show tickers, not market narratives",
+        "Risk management is entirely manual",
+        "Automation tools require giving up custody"
+    ]
+    add_bullet_list(slide2, MARGIN, 4.8, 11, 2.5, problems, font_size=17)
 
     # =========================================================================
-    # SLIDE 3: Solution Overview
+    # SLIDE 3: The Problem (Visual)
     # =========================================================================
     slide3 = prs.slides.add_slide(prs.slide_layouts[6])
     set_slide_background(slide3)
 
-    add_text_box(slide3, 0.5, 0.5, 12.333, 0.8, "TAGO Leap: The Solution",
-                 font_size=44, font_color=WHITE, bold=True)
+    add_styled_heading(slide3, MARGIN, 0.6, 10, 0.8,
+                       prefix="The ", accent="Problem", suffix="",
+                       font_size=48)
 
-    add_text_box(slide3, 0.5, 1.3, 12.333, 0.6,
-                 "One platform. Three powerful integrations.",
-                 font_size=20, font_color=GRAY, italic=True)
-
-    # Three pillars
-    pillars = [
-        ("PEAR", "Trade Ideas", "AI-powered narrative trading\nPair & basket trades\nBet-slip UX"),
-        ("LIFI", "One-Click Onboard", "Bridge from any chain\nDeposit to Hyperliquid\nSeamless flow"),
-        ("SALT", "Robo Managers", "Policy-controlled accounts\nAutomated strategies\nNon-custodial")
+    # Three problem cards
+    problems_data = [
+        ("Complex Onboarding", "Users need 5+ steps to bridge assets and start trading on Hyperliquid", "LI.FI"),
+        ("Token-Centric Trading", "Traders pick tickers, not theses. No way to express 'AI will beat ETH'", "PEAR"),
+        ("No Automated Safety", "Risk management is manual. Automation means giving up custody", "SALT")
     ]
 
-    x_positions = [1, 5, 9]
-    for i, (badge, title, desc) in enumerate(pillars):
+    card_width = 3.7
+    card_start = 0.8
+    card_gap = 0.3
+
+    for i, (title, desc, bounty) in enumerate(problems_data):
+        x = card_start + i * (card_width + card_gap)
+
+        # Card
+        add_card(slide3, x, 1.8, card_width, 4.2, has_border=True, border_color=GRAY_500)
+
         # Badge
-        add_bounty_badge(slide3, x_positions[i], 2.2, badge)
+        add_badge(slide3, x + 0.2, 2.0, bounty)
 
         # Title
-        add_text_box(slide3, x_positions[i] - 0.3, 2.8, 3.5, 0.6, title,
-                     font_size=28, font_color=WHITE, bold=True)
+        add_text_box(slide3, x + 0.2, 2.6, card_width - 0.4, 0.8, title,
+                     font_size=22, font_color=WHITE, bold=False)
 
-        # Description box
-        box = slide3.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
-                                       Inches(x_positions[i] - 0.3), Inches(3.5),
-                                       Inches(3.5), Inches(2.5))
-        box.fill.solid()
-        box.fill.fore_color.rgb = DARK_GRAY
-        box.line.color.rgb = YELLOW
-        box.line.width = Pt(1)
+        # Description
+        add_text_box(slide3, x + 0.2, 3.5, card_width - 0.4, 2.2, desc,
+                     font_size=15, font_color=GRAY_300)
 
-        add_text_box(slide3, x_positions[i], 3.7, 3, 2, desc,
-                     font_size=16, font_color=WHITE)
-
-    # Bottom tagline
-    add_text_box(slide3, 0.5, 6.5, 12.333, 0.5,
-                 '"Trade ideas, not just single tokens" + "One-click onboarding" + "Never take custody"',
-                 font_size=14, font_color=YELLOW, italic=True,
+    # Bottom insight
+    add_text_box(slide3, MARGIN, 6.4, SLIDE_WIDTH - 2*MARGIN, 0.5,
+                 "Traders need a simpler way to onboard, express market views, and automate safely.",
+                 font_size=16, font_color=GRAY_400, italic=True,
                  align=PP_ALIGN.CENTER)
 
     # =========================================================================
-    # SLIDE 4: PEAR Bounty Deep Dive
+    # SLIDE 4: The Solution
     # =========================================================================
     slide4 = prs.slides.add_slide(prs.slide_layouts[6])
     set_slide_background(slide4)
 
-    add_bounty_badge(slide4, 0.5, 0.5, "PEAR")
-    add_text_box(slide4, 2, 0.4, 10, 0.8, "Narrative Trading Engine",
-                 font_size=40, font_color=WHITE, bold=True)
+    add_styled_heading(slide4, MARGIN, 0.5, 10, 0.8,
+                       prefix="TAGO ", accent="Leap", suffix="",
+                       font_size=48)
 
-    add_text_box(slide4, 0.5, 1.2, 12.333, 0.5,
+    add_text_box(slide4, MARGIN, 1.2, 10, 0.4,
+                 "One platform. Three powerful integrations.",
+                 font_size=18, font_color=GRAY_300, italic=True)
+
+    # Three pillars
+    pillars = [
+        ("PEAR", "Trade Ideas", [
+            "AI-powered narrative trading",
+            "Pair & basket trades",
+            "Bet-slip simplicity"
+        ]),
+        ("LI.FI", "One-Click Onboard", [
+            "Bridge from any chain",
+            "Auto-deposit to account",
+            "Full route transparency"
+        ]),
+        ("SALT", "Robo Managers", [
+            "Policy-controlled accounts",
+            "Automated strategies",
+            "100% non-custodial"
+        ])
+    ]
+
+    pillar_width = 3.5
+    pillar_start = 1.2
+    pillar_gap = 0.6
+
+    for i, (badge_text, title, features) in enumerate(pillars):
+        x = pillar_start + i * (pillar_width + pillar_gap)
+
+        # Card with yellow border for emphasis
+        card = add_card(slide4, x, 2.0, pillar_width, 4.0, has_border=True, border_color=YELLOW)
+
+        # Badge
+        add_badge(slide4, x + (pillar_width - 1.4) / 2, 2.2, badge_text)
+
+        # Title
+        add_text_box(slide4, x, 2.8, pillar_width, 0.5, title,
+                     font_size=24, font_color=WHITE,
+                     align=PP_ALIGN.CENTER)
+
+        # Features
+        for j, feature in enumerate(features):
+            add_text_box(slide4, x + 0.3, 3.5 + j * 0.6, pillar_width - 0.6, 0.5,
+                         f"→ {feature}",
+                         font_size=14, font_color=GRAY_200)
+
+    # Tagline
+    add_text_box(slide4, MARGIN, 6.4, SLIDE_WIDTH - 2*MARGIN, 0.5,
+                 '"Trade ideas, not just single tokens" — built for Hyperliquid',
+                 font_size=14, font_color=YELLOW, italic=True,
+                 align=PP_ALIGN.CENTER)
+
+    # =========================================================================
+    # SLIDE 5: PEAR - Narrative Trading
+    # =========================================================================
+    slide5 = prs.slides.add_slide(prs.slide_layouts[6])
+    set_slide_background(slide5)
+
+    add_badge(slide5, MARGIN, 0.5, "PEAR")
+    add_styled_heading(slide5, MARGIN + 1.6, 0.4, 10, 0.7,
+                       prefix="", accent="Narrative", suffix=" Trading Engine",
+                       font_size=40)
+
+    add_text_box(slide5, MARGIN, 1.1, 10, 0.4,
                  '"Build tools that let people trade ideas, not just single tokens"',
-                 font_size=16, font_color=GRAY, italic=True)
+                 font_size=14, font_color=GRAY_400, italic=True)
 
-    # Left column - How it works
-    add_text_box(slide4, 0.5, 1.9, 5.5, 0.5, "How It Works",
-                 font_size=24, font_color=YELLOW, bold=True)
+    # Left: How it works
+    add_text_box(slide5, MARGIN, 1.7, 5.5, 0.4, "How It Works",
+                 font_size=18, font_color=YELLOW)
 
     steps = [
-        "1. Enter your market thesis in plain English",
-        '2. AI (Claude) generates trade suggestions',
-        "3. Select pair or basket trade",
-        "4. Adjust stake, leverage, direction",
-        "5. Execute via Pear Protocol API"
+        "Enter your market thesis in plain English",
+        "AI (Claude) generates trade suggestions",
+        "Select pair or basket trade structure",
+        "Adjust stake, leverage, direction",
+        "Execute via Pear Protocol API"
     ]
-    add_bullet_points(slide4, 0.8, 2.5, 5.5, 3, steps, font_size=16)
 
-    # Right column - Features
-    add_text_box(slide4, 7, 1.9, 5.5, 0.5, "Key Features",
-                 font_size=24, font_color=YELLOW, bold=True)
+    for i, step in enumerate(steps):
+        add_text_box(slide5, MARGIN + 0.4, 2.2 + i * 0.55, 5.5, 0.5,
+                     f"{i+1}.  {step}",
+                     font_size=14, font_color=GRAY_200)
+
+    # Right: Key Features
+    add_text_box(slide5, 7, 1.7, 5.5, 0.4, "Key Features",
+                 font_size=18, font_color=YELLOW)
 
     features = [
         "Narrative-first UI (themes, not tickers)",
         "Pair trades: Long A / Short B",
         "Basket trades: Long group vs benchmark",
-        "Bet-slip UX (stake, direction, risk)",
+        "Bet-slip UX (stake → direction → risk)",
         "Full trade logging with metadata"
     ]
-    add_bullet_points(slide4, 7.3, 2.5, 5.5, 3, features, font_size=16)
+
+    for i, feature in enumerate(features):
+        add_text_box(slide5, 7.4, 2.2 + i * 0.55, 5, 0.5,
+                     f"→  {feature}",
+                     font_size=14, font_color=GRAY_200)
 
     # Example box
-    example_box = slide4.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
-                                           Inches(0.5), Inches(5.3),
-                                           Inches(12.333), Inches(1.8))
-    example_box.fill.solid()
-    example_box.fill.fore_color.rgb = DARK_GRAY
-    example_box.line.color.rgb = YELLOW
+    add_card(slide5, MARGIN, 5.0, SLIDE_WIDTH - 2*MARGIN, 1.8, has_border=True, border_color=YELLOW)
 
-    add_text_box(slide4, 0.8, 5.5, 12, 0.4, "Example Thesis:",
-                 font_size=14, font_color=YELLOW, bold=True)
-    add_text_box(slide4, 0.8, 5.9, 12, 0.4,
+    add_text_box(slide5, MARGIN + 0.3, 5.2, 4, 0.3, "Example Thesis:",
+                 font_size=12, font_color=YELLOW)
+
+    add_text_box(slide5, MARGIN + 0.3, 5.5, 11, 0.5,
                  '"I believe AI tokens will outperform Ethereum over the next month"',
                  font_size=18, font_color=WHITE, italic=True)
-    add_text_box(slide4, 0.8, 6.4, 12, 0.4,
-                 "→ AI suggests: Long RENDER, TAO, FET basket / Short ETH benchmark",
-                 font_size=16, font_color=GRAY)
+
+    add_text_box(slide5, MARGIN + 0.3, 6.1, 11, 0.4,
+                 "→  AI suggests: Long RENDER, TAO, FET basket  /  Short ETH benchmark",
+                 font_size=15, font_color=GRAY_300)
 
     # =========================================================================
-    # SLIDE 5: LIFI Bounty Deep Dive
-    # =========================================================================
-    slide5 = prs.slides.add_slide(prs.slide_layouts[6])
-    set_slide_background(slide5)
-
-    add_bounty_badge(slide5, 0.5, 0.5, "LIFI")
-    add_text_box(slide5, 2, 0.4, 10, 0.8, "One-Click Onboarding",
-                 font_size=40, font_color=WHITE, bold=True)
-
-    add_text_box(slide5, 0.5, 1.2, 12.333, 0.5,
-                 '"Bridge users from any chain into HyperEVM using LI.FI routing"',
-                 font_size=16, font_color=GRAY, italic=True)
-
-    # Flow diagram (simplified)
-    flow_steps = ["Any Chain", "→", "LI.FI Router", "→", "HyperEVM", "→", "Trading Account"]
-    x_pos = 0.5
-    for i, step in enumerate(flow_steps):
-        if step == "→":
-            add_text_box(slide5, x_pos, 2.3, 0.8, 0.5, step,
-                         font_size=32, font_color=YELLOW, align=PP_ALIGN.CENTER)
-            x_pos += 0.8
-        else:
-            box = slide5.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
-                                           Inches(x_pos), Inches(2.2),
-                                           Inches(2.2), Inches(0.7))
-            box.fill.solid()
-            box.fill.fore_color.rgb = DARK_GRAY
-            box.line.color.rgb = YELLOW
-
-            tf = box.text_frame
-            p = tf.paragraphs[0]
-            p.text = step
-            p.font.size = Pt(14)
-            p.font.color.rgb = WHITE
-            p.font.bold = True
-            p.alignment = PP_ALIGN.CENTER
-            x_pos += 2.5
-
-    # Features
-    add_text_box(slide5, 0.5, 3.3, 5.5, 0.5, "User Experience",
-                 font_size=24, font_color=YELLOW, bold=True)
-
-    ux_features = [
-        "Select origin chain + token",
-        "See full route summary & ETA",
-        "Track progress in real-time",
-        "Automatic deposit to trading account",
-        "Mobile-first responsive design"
-    ]
-    add_bullet_points(slide5, 0.8, 3.9, 5.5, 2.5, ux_features, font_size=16)
-
-    add_text_box(slide5, 7, 3.3, 5.5, 0.5, "Technical Implementation",
-                 font_size=24, font_color=YELLOW, bold=True)
-
-    tech_features = [
-        "Dedicated lifi-service backend",
-        "GET /onboard/options - supported chains",
-        "POST /onboard/quote - route quotes",
-        "POST /onboard/track - progress tracking",
-        "Reusable deposit component"
-    ]
-    add_bullet_points(slide5, 7.3, 3.9, 5.5, 2.5, tech_features, font_size=16)
-
-    # Key differentiator
-    add_yellow_accent_box(slide5, 4, 6.2, 5.333, 1, "1 Click", "From any chain to trading")
-
-    # =========================================================================
-    # SLIDE 6: SALT Bounty Deep Dive
+    # SLIDE 6: LI.FI - Onboarding
     # =========================================================================
     slide6 = prs.slides.add_slide(prs.slide_layouts[6])
     set_slide_background(slide6)
 
-    add_bounty_badge(slide6, 0.5, 0.5, "SALT")
-    add_text_box(slide6, 2, 0.4, 10, 0.8, "Policy-Controlled Robo Managers",
-                 font_size=40, font_color=WHITE, bold=True)
+    add_badge(slide6, MARGIN, 0.5, "LI.FI")
+    add_styled_heading(slide6, MARGIN + 1.6, 0.4, 10, 0.7,
+                       prefix="", accent="One-Click", suffix=" Onboarding",
+                       font_size=40)
 
-    add_text_box(slide6, 0.5, 1.2, 12.333, 0.5,
+    add_text_box(slide6, MARGIN, 1.1, 10, 0.4,
+                 '"Bridge users from any chain into HyperEVM using LI.FI routing"',
+                 font_size=14, font_color=GRAY_400, italic=True)
+
+    # Flow diagram - cleaner horizontal layout
+    flow_y = 2.0
+    flow_items = [
+        ("Any Chain", False),
+        ("LI.FI Router", False),
+        ("HyperEVM", False),
+        ("Trading Account", True)
+    ]
+
+    x_pos = 0.6
+    for i, (label, is_highlight) in enumerate(flow_items):
+        add_flow_box(slide6, x_pos, flow_y, 2.6, label, is_highlight)
+        if i < len(flow_items) - 1:
+            add_flow_arrow(slide6, x_pos + 2.6, flow_y + 0.05)
+        x_pos += 3.2
+
+    # Two columns
+    add_text_box(slide6, MARGIN, 3.0, 5.5, 0.4, "User Experience",
+                 font_size=18, font_color=YELLOW)
+
+    ux_items = [
+        "Select origin chain + token",
+        "See full route summary & ETA",
+        "Track progress in real-time",
+        "Automatic deposit on arrival"
+    ]
+    for i, item in enumerate(ux_items):
+        add_text_box(slide6, MARGIN + 0.4, 3.5 + i * 0.55, 5, 0.5,
+                     f"→  {item}",
+                     font_size=14, font_color=GRAY_200)
+
+    add_text_box(slide6, 7, 3.0, 5.5, 0.4, "Technical Implementation",
+                 font_size=18, font_color=YELLOW)
+
+    tech_items = [
+        "Dedicated lifi-service backend",
+        "GET /onboard/options",
+        "POST /onboard/quote & /track",
+        "Reusable deposit component"
+    ]
+    for i, item in enumerate(tech_items):
+        add_text_box(slide6, 7.4, 3.5 + i * 0.55, 5, 0.5,
+                     f"→  {item}",
+                     font_size=14, font_color=GRAY_200)
+
+    # Highlight stat
+    add_stat_box(slide6, 4.5, 5.7, 4.3, 1.2, "1 Click", "From Any Chain to Trading")
+
+    # =========================================================================
+    # SLIDE 7: SALT - Robo Managers
+    # =========================================================================
+    slide7 = prs.slides.add_slide(prs.slide_layouts[6])
+    set_slide_background(slide7)
+
+    add_badge(slide7, MARGIN, 0.5, "SALT")
+    add_styled_heading(slide7, MARGIN + 1.6, 0.4, 10, 0.7,
+                       prefix="", accent="Policy-Controlled", suffix=" Robo Managers",
+                       font_size=40)
+
+    add_text_box(slide7, MARGIN, 1.1, 10, 0.4,
                  '"Automate and manage capital without ever taking custody"',
-                 font_size=16, font_color=GRAY, italic=True)
+                 font_size=14, font_color=GRAY_400, italic=True)
 
-    # Policy features
-    add_text_box(slide6, 0.5, 1.9, 6, 0.5, "Policy Controls",
-                 font_size=24, font_color=YELLOW, bold=True)
+    # Two columns
+    add_text_box(slide7, MARGIN, 1.7, 5.5, 0.4, "Policy Controls",
+                 font_size=18, font_color=YELLOW)
 
     policies = [
         "Max Leverage: 1-10x limit",
         "Daily Notional: $100 - $1M cap",
         "Max Drawdown: 1-50% protection",
-        "Allowed Pairs: Whitelist only",
-        "All rules enforced before execution"
+        "Allowed Pairs: Whitelist only"
     ]
-    add_bullet_points(slide6, 0.8, 2.5, 5.5, 2.5, policies, font_size=16)
+    for i, item in enumerate(policies):
+        add_text_box(slide7, MARGIN + 0.4, 2.2 + i * 0.55, 5, 0.5,
+                     f"→  {item}",
+                     font_size=14, font_color=GRAY_200)
 
-    # Strategies
-    add_text_box(slide6, 7, 1.9, 5.5, 0.5, "Automated Strategies",
-                 font_size=24, font_color=YELLOW, bold=True)
+    add_text_box(slide7, 7, 1.7, 5.5, 0.4, "Automated Strategies",
+                 font_size=18, font_color=YELLOW)
 
     strategies = [
         "Mean Reversion: AI vs ETH",
         "SOL Ecosystem vs BTC",
         "DeFi Momentum plays",
-        "60-second strategy loop",
-        "Full audit trail in strategy_runs"
+        "60-second strategy loop"
     ]
-    add_bullet_points(slide6, 7.3, 2.5, 5.5, 2.5, strategies, font_size=16)
+    for i, item in enumerate(strategies):
+        add_text_box(slide7, 7.4, 2.2 + i * 0.55, 5, 0.5,
+                     f"→  {item}",
+                     font_size=14, font_color=GRAY_200)
 
-    # Non-custodial emphasis
-    emphasis_box = slide6.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
-                                            Inches(0.5), Inches(5.2),
-                                            Inches(12.333), Inches(2))
-    emphasis_box.fill.solid()
-    emphasis_box.fill.fore_color.rgb = DARK_GRAY
-    emphasis_box.line.color.rgb = YELLOW
-    emphasis_box.line.width = Pt(2)
+    # Non-custodial callout box
+    add_card(slide7, MARGIN, 4.6, SLIDE_WIDTH - 2*MARGIN, 2.2, has_border=True, border_color=YELLOW)
 
-    add_text_box(slide6, 0.8, 5.4, 12, 0.5, "NON-CUSTODIAL BY DESIGN",
-                 font_size=24, font_color=YELLOW, bold=True)
-    add_text_box(slide6, 0.8, 5.9, 12, 1,
-                 "Your funds stay in YOUR policy-controlled account. The robo manager only instructs trades under strict rules - never holds your assets.",
-                 font_size=18, font_color=WHITE)
+    add_text_box(slide7, MARGIN + 0.4, 4.9, 11, 0.5,
+                 "NON-CUSTODIAL BY DESIGN",
+                 font_size=24, font_color=YELLOW)
+
+    add_text_box(slide7, MARGIN + 0.4, 5.5, 11, 1,
+                 "Your funds stay in YOUR policy-controlled account. The robo manager only instructs trades under strict rules — it never holds your assets. Full audit trail in strategy_runs.",
+                 font_size=16, font_color=GRAY_200)
 
     # =========================================================================
-    # SLIDE 7: Architecture
-    # =========================================================================
-    slide7 = prs.slides.add_slide(prs.slide_layouts[6])
-    set_slide_background(slide7)
-
-    add_text_box(slide7, 0.5, 0.3, 12.333, 0.8, "Architecture",
-                 font_size=44, font_color=WHITE, bold=True)
-
-    # Service boxes
-    services = [
-        ("Frontend", "Next.js 14\nRainbowKit\nTailwind CSS", 0.5, 1.5),
-        ("pear-service", "Claude AI\nPear Protocol\nTrade Execution", 4, 1.5),
-        ("lifi-service", "LI.FI SDK\nRoute Optimization\nDeposit Flow", 7.5, 1.5),
-        ("salt-service", "Salt SDK\nPolicy Engine\nStrategy Loop", 11, 1.5),
-    ]
-
-    for name, desc, x, y in services:
-        box = slide7.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
-                                       Inches(x), Inches(y),
-                                       Inches(2.8), Inches(2))
-        box.fill.solid()
-        box.fill.fore_color.rgb = DARK_GRAY
-        box.line.color.rgb = YELLOW
-
-        # Service name
-        add_text_box(slide7, x + 0.1, y + 0.1, 2.6, 0.4, name,
-                     font_size=16, font_color=YELLOW, bold=True, align=PP_ALIGN.CENTER)
-
-        # Description
-        add_text_box(slide7, x + 0.1, y + 0.6, 2.6, 1.3, desc,
-                     font_size=12, font_color=WHITE, align=PP_ALIGN.CENTER)
-
-    # External services
-    add_text_box(slide7, 0.5, 4, 12.333, 0.5, "External Integrations",
-                 font_size=20, font_color=GRAY)
-
-    externals = [
-        ("Hyperliquid", 1, 4.6),
-        ("Pear Protocol", 4, 4.6),
-        ("LI.FI", 7, 4.6),
-        ("Salt", 10, 4.6),
-    ]
-
-    for name, x, y in externals:
-        box = slide7.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
-                                       Inches(x), Inches(y),
-                                       Inches(2.5), Inches(0.6))
-        box.fill.solid()
-        box.fill.fore_color.rgb = YELLOW
-        box.line.fill.background()
-
-        tf = box.text_frame
-        p = tf.paragraphs[0]
-        p.text = name
-        p.font.size = Pt(14)
-        p.font.color.rgb = BLACK
-        p.font.bold = True
-        p.alignment = PP_ALIGN.CENTER
-
-    # Tech stack summary
-    add_text_box(slide7, 0.5, 5.5, 12.333, 0.4, "Tech Stack",
-                 font_size=20, font_color=GRAY)
-
-    stack = "TypeScript • Turborepo • Fastify • Supabase • Anthropic Claude • Viem/Wagmi • pnpm"
-    add_text_box(slide7, 0.5, 6, 12.333, 0.4, stack,
-                 font_size=16, font_color=WHITE, align=PP_ALIGN.CENTER)
-
-    # =========================================================================
-    # SLIDE 8: Demo Flow
+    # SLIDE 8: Architecture
     # =========================================================================
     slide8 = prs.slides.add_slide(prs.slide_layouts[6])
     set_slide_background(slide8)
 
-    add_text_box(slide8, 0.5, 0.3, 12.333, 0.8, "Demo Flow",
-                 font_size=44, font_color=WHITE, bold=True)
+    add_styled_heading(slide8, MARGIN, 0.5, 10, 0.7,
+                       prefix="", accent="Architecture", suffix="",
+                       font_size=44)
 
-    add_text_box(slide8, 0.5, 1, 12.333, 0.5,
-                 "End-to-end: Onboard → Trade → Automate",
-                 font_size=20, font_color=YELLOW, italic=True)
-
-    demo_steps = [
-        ("1", "ONBOARD", "User bridges USDC from Arbitrum to HyperEVM via LI.FI", "LIFI"),
-        ("2", "CONNECT", "Connect wallet, funds auto-deposit to trading account", "LIFI"),
-        ("3", "THESIS", 'Enter thesis: "AI will outperform ETH this month"', "PEAR"),
-        ("4", "TRADE", "AI suggests pair trade, user confirms with bet-slip UI", "PEAR"),
-        ("5", "EXECUTE", "Trade executes via Pear Protocol on Hyperliquid", "PEAR"),
-        ("6", "AUTOMATE", "Enable robo manager with risk policies", "SALT"),
+    # Service boxes
+    services = [
+        ("Frontend", "Next.js 14\nRainbowKit\nTailwind CSS"),
+        ("pear-service", "Claude AI\nPear Protocol\nTrade Execution"),
+        ("lifi-service", "LI.FI SDK\nRoute Optimization\nDeposit Flow"),
+        ("salt-service", "Salt SDK\nPolicy Engine\nStrategy Loop"),
     ]
 
-    y_pos = 1.7
-    for num, title, desc, bounty in demo_steps:
-        # Step number circle
-        circle = slide8.shapes.add_shape(MSO_SHAPE.OVAL,
-                                          Inches(0.6), Inches(y_pos),
-                                          Inches(0.5), Inches(0.5))
+    box_width = 2.6
+    box_start = 0.9
+    box_gap = 0.5
+
+    for i, (name, desc) in enumerate(services):
+        x = box_start + i * (box_width + box_gap)
+
+        add_card(slide8, x, 1.5, box_width, 2.2, has_border=True, border_color=YELLOW)
+
+        add_text_box(slide8, x, 1.7, box_width, 0.4, name,
+                     font_size=14, font_color=YELLOW,
+                     align=PP_ALIGN.CENTER)
+
+        add_text_box(slide8, x + 0.2, 2.2, box_width - 0.4, 1.3, desc,
+                     font_size=11, font_color=GRAY_200,
+                     align=PP_ALIGN.CENTER)
+
+    # External integrations
+    add_text_box(slide8, MARGIN, 4.0, 10, 0.4, "External Integrations",
+                 font_size=16, font_color=GRAY_400)
+
+    externals = ["Hyperliquid", "Pear Protocol", "LI.FI", "Salt"]
+    ext_start = 1.5
+    ext_gap = 2.8
+
+    for i, name in enumerate(externals):
+        x = ext_start + i * ext_gap
+        add_badge(slide8, x, 4.5, name, bg_color=YELLOW, text_color=BLACK, width=2.2)
+
+    # Tech stack
+    add_text_box(slide8, MARGIN, 5.4, 10, 0.3, "Tech Stack",
+                 font_size=14, font_color=GRAY_400)
+
+    add_text_box(slide8, MARGIN, 5.8, SLIDE_WIDTH - 2*MARGIN, 0.4,
+                 "TypeScript  •  Turborepo  •  Fastify  •  Supabase  •  Anthropic Claude  •  Viem/Wagmi  •  pnpm",
+                 font_size=14, font_color=GRAY_200,
+                 align=PP_ALIGN.CENTER)
+
+    # =========================================================================
+    # SLIDE 9: Demo Flow
+    # =========================================================================
+    slide9 = prs.slides.add_slide(prs.slide_layouts[6])
+    set_slide_background(slide9)
+
+    add_styled_heading(slide9, MARGIN, 0.5, 10, 0.7,
+                       prefix="", accent="Demo", suffix=" Flow",
+                       font_size=44)
+
+    add_text_box(slide9, MARGIN, 1.1, 10, 0.4,
+                 "End-to-end:  Onboard  →  Trade  →  Automate",
+                 font_size=16, font_color=YELLOW, italic=True)
+
+    # Demo steps - horizontal timeline style
+    demo_steps = [
+        ("1", "Onboard", "Bridge USDC via LI.FI", "LI.FI"),
+        ("2", "Connect", "Wallet auto-deposits", "LI.FI"),
+        ("3", "Thesis", "Enter market view", "PEAR"),
+        ("4", "Trade", "AI suggests pair trade", "PEAR"),
+        ("5", "Execute", "Trade via Pear API", "PEAR"),
+        ("6", "Automate", "Enable robo manager", "SALT"),
+    ]
+
+    y_pos = 1.8
+    row_height = 0.85
+
+    for i, (num, title, desc, bounty) in enumerate(demo_steps):
+        y = y_pos + i * row_height
+
+        # Number circle
+        circle = slide9.shapes.add_shape(MSO_SHAPE.OVAL,
+                                          Inches(0.8), Inches(y),
+                                          Inches(0.45), Inches(0.45))
         circle.fill.solid()
         circle.fill.fore_color.rgb = YELLOW
         circle.line.fill.background()
 
         tf = circle.text_frame
+        try:
+            tf.anchor = MSO_ANCHOR.MIDDLE
+        except:
+            pass
         p = tf.paragraphs[0]
         p.text = num
-        p.font.size = Pt(18)
+        p.font.size = Pt(16)
         p.font.color.rgb = BLACK
         p.font.bold = True
         p.alignment = PP_ALIGN.CENTER
 
-        # Title and description
-        add_text_box(slide8, 1.3, y_pos - 0.05, 2, 0.5, title,
-                     font_size=18, font_color=YELLOW, bold=True)
-        add_text_box(slide8, 3.5, y_pos, 7.5, 0.5, desc,
-                     font_size=16, font_color=WHITE)
+        # Title
+        add_text_box(slide9, 1.5, y - 0.05, 2, 0.45, title,
+                     font_size=18, font_color=YELLOW)
 
-        # Bounty badge
-        add_bounty_badge(slide8, 11.5, y_pos + 0.05, bounty)
+        # Description
+        add_text_box(slide9, 3.5, y, 7, 0.45, desc,
+                     font_size=15, font_color=GRAY_200)
 
-        y_pos += 0.85
+        # Badge
+        add_badge(slide9, 11, y + 0.02, bounty)
 
     # =========================================================================
-    # SLIDE 9: Bounty Checklist
+    # SLIDE 10: Bounty Checklist
     # =========================================================================
-    slide9 = prs.slides.add_slide(prs.slide_layouts[6])
-    set_slide_background(slide9)
+    slide10 = prs.slides.add_slide(prs.slide_layouts[6])
+    set_slide_background(slide10)
 
-    add_text_box(slide9, 0.5, 0.3, 12.333, 0.8, "Bounty Requirements",
-                 font_size=40, font_color=WHITE, bold=True)
+    add_styled_heading(slide10, MARGIN, 0.5, 10, 0.7,
+                       prefix="Bounty ", accent="Requirements", suffix="",
+                       font_size=44)
 
-    add_text_box(slide9, 0.5, 1, 12.333, 0.4, "All acceptance criteria satisfied",
-                 font_size=18, font_color=YELLOW, italic=True)
+    add_text_box(slide10, MARGIN, 1.1, 10, 0.4,
+                 "All acceptance criteria satisfied",
+                 font_size=16, font_color=YELLOW, italic=True)
 
     # Three columns
-    bounty_checks = [
+    checklists = [
         ("PEAR", [
             "✓ Trade UI starts from ideas/themes",
             "✓ Pair + basket trades wired live",
             "✓ Narrative metadata logged",
             "✓ Bet-slip UX design",
-            "✓ Automation routes to pear-service"
+            "✓ Automation routes to service"
         ]),
-        ("LIFI", [
+        ("LI.FI", [
             "✓ lifi-service endpoints exposed",
             "✓ Composable deposit component",
             "✓ Quote, ETA, route shown",
@@ -579,108 +817,142 @@ def create_presentation():
         ])
     ]
 
-    x_positions = [0.5, 4.7, 8.9]
-    for i, (bounty, checks) in enumerate(bounty_checks):
-        add_bounty_badge(slide9, x_positions[i], 1.5, bounty)
+    col_width = 3.8
+    col_start = 0.8
+    col_gap = 0.3
 
-        y = 2.1
-        for check in checks:
-            add_text_box(slide9, x_positions[i], y, 4, 0.4, check,
-                         font_size=14, font_color=WHITE)
-            y += 0.5
+    for i, (bounty, items) in enumerate(checklists):
+        x = col_start + i * (col_width + col_gap)
 
-    # Bottom summary
-    add_text_box(slide9, 0.5, 5.8, 12.333, 1,
-                 "TAGO Leap delivers on ALL THREE bounties with a cohesive, production-ready platform",
-                 font_size=20, font_color=WHITE, bold=True, align=PP_ALIGN.CENTER)
+        add_badge(slide10, x, 1.7, bounty)
 
-    # =========================================================================
-    # SLIDE 10: Why TAGO Leap Wins
-    # =========================================================================
-    slide10 = prs.slides.add_slide(prs.slide_layouts[6])
-    set_slide_background(slide10)
+        for j, item in enumerate(items):
+            add_text_box(slide10, x, 2.3 + j * 0.55, col_width, 0.5, item,
+                         font_size=13, font_color=GRAY_200)
 
-    add_text_box(slide10, 0.5, 0.3, 12.333, 0.8, "Why TAGO Leap",
-                 font_size=44, font_color=WHITE, bold=True)
+    # Summary
+    add_text_box(slide10, MARGIN, 5.5, SLIDE_WIDTH - 2*MARGIN, 0.6,
+                 "TAGO Leap delivers on ALL THREE bounties",
+                 font_size=22, font_color=WHITE,
+                 align=PP_ALIGN.CENTER)
 
-    differentiators = [
-        ("Innovation", "First narrative trading platform on Hyperliquid"),
-        ("Integration", "Seamlessly combines PEAR + LIFI + SALT"),
-        ("User Experience", "Bet-slip simplicity, not trading terminal complexity"),
-        ("Safety", "Non-custodial robo managers with policy enforcement"),
-        ("Accessibility", "One-click onboarding from any blockchain"),
-        ("Production Ready", "Clean architecture, full documentation")
-    ]
-
-    y = 1.3
-    for title, desc in differentiators:
-        # Yellow marker
-        marker = slide10.shapes.add_shape(MSO_SHAPE.RECTANGLE,
-                                           Inches(0.5), Inches(y + 0.1),
-                                           Inches(0.1), Inches(0.5))
-        marker.fill.solid()
-        marker.fill.fore_color.rgb = YELLOW
-        marker.line.fill.background()
-
-        add_text_box(slide10, 0.8, y, 4, 0.5, title,
-                     font_size=22, font_color=YELLOW, bold=True)
-        add_text_box(slide10, 5, y + 0.05, 8, 0.5, desc,
-                     font_size=18, font_color=WHITE)
-        y += 0.85
-
-    # Quote
-    add_text_box(slide10, 0.5, 6.3, 12.333, 0.8,
-                 '"Trade ideas, not just single tokens" - Pear Protocol Vision',
-                 font_size=18, font_color=GRAY, italic=True, align=PP_ALIGN.CENTER)
+    add_text_box(slide10, MARGIN, 6.1, SLIDE_WIDTH - 2*MARGIN, 0.4,
+                 "with a cohesive, production-ready platform",
+                 font_size=16, font_color=GRAY_300,
+                 align=PP_ALIGN.CENTER)
 
     # =========================================================================
-    # SLIDE 11: Call to Action
+    # SLIDE 11: Why TAGO Leap
     # =========================================================================
     slide11 = prs.slides.add_slide(prs.slide_layouts[6])
     set_slide_background(slide11)
 
-    # Yellow border frame
-    top_border = slide11.shapes.add_shape(MSO_SHAPE.RECTANGLE,
-                                           Inches(0.5), Inches(0.3),
-                                           Inches(12.333), Inches(0.05))
-    top_border.fill.solid()
-    top_border.fill.fore_color.rgb = YELLOW
-    top_border.line.fill.background()
+    add_styled_heading(slide11, MARGIN, 0.5, 10, 0.7,
+                       prefix="Why ", accent="TAGO Leap", suffix="",
+                       font_size=44)
 
-    add_text_box(slide11, 0.5, 1.5, 12.333, 1, "TAGO",
-                 font_size=96, font_color=WHITE, bold=True, align=PP_ALIGN.CENTER)
+    differentiators = [
+        ("Innovation", "First narrative trading platform on Hyperliquid"),
+        ("Integration", "Seamlessly combines PEAR + LI.FI + SALT"),
+        ("User Experience", "Bet-slip simplicity, not trading terminal complexity"),
+        ("Safety", "Non-custodial robo managers with policy enforcement"),
+        ("Accessibility", "One-click onboarding from any blockchain"),
+        ("Production Ready", "Clean architecture, comprehensive documentation")
+    ]
 
-    add_text_box(slide11, 0.5, 2.9, 12.333, 0.8, "LEAP",
-                 font_size=72, font_color=YELLOW, bold=True, italic=True, align=PP_ALIGN.CENTER)
+    y = 1.5
+    for title, desc in differentiators:
+        # Yellow marker line
+        marker = slide11.shapes.add_shape(MSO_SHAPE.RECTANGLE,
+                                           Inches(MARGIN), Inches(y + 0.15),
+                                           Inches(0.08), Inches(0.4))
+        marker.fill.solid()
+        marker.fill.fore_color.rgb = YELLOW
+        marker.line.fill.background()
 
-    add_text_box(slide11, 0.5, 4.2, 12.333, 0.6,
-                 "The future of narrative trading is here.",
-                 font_size=28, font_color=WHITE, italic=True, align=PP_ALIGN.CENTER)
+        add_text_box(slide11, MARGIN + 0.3, y, 3.5, 0.5, title,
+                     font_size=20, font_color=YELLOW)
+        add_text_box(slide11, 4.5, y + 0.05, 8, 0.5, desc,
+                     font_size=17, font_color=GRAY_200)
+        y += 0.8
 
-    # Three bounty achievements
-    add_yellow_accent_box(slide11, 2.5, 5.2, 2.5, 0.8, "PEAR", "Trade Ideas")
-    add_yellow_accent_box(slide11, 5.5, 5.2, 2.5, 0.8, "LIFI", "1-Click Onboard")
-    add_yellow_accent_box(slide11, 8.5, 5.2, 2.5, 0.8, "SALT", "Robo Managers")
-
-    add_text_box(slide11, 0.5, 6.4, 12.333, 0.5,
-                 "Thank you!",
-                 font_size=32, font_color=WHITE, bold=True, align=PP_ALIGN.CENTER)
-
-    # Bottom border
-    bottom_border = slide11.shapes.add_shape(MSO_SHAPE.RECTANGLE,
-                                              Inches(0.5), Inches(7.15),
-                                              Inches(12.333), Inches(0.05))
-    bottom_border.fill.solid()
-    bottom_border.fill.fore_color.rgb = YELLOW
-    bottom_border.line.fill.background()
+    # Quote
+    add_text_box(slide11, MARGIN, 6.5, SLIDE_WIDTH - 2*MARGIN, 0.5,
+                 '"Trade ideas, not just single tokens" — Pear Protocol Vision',
+                 font_size=14, font_color=GRAY_400, italic=True,
+                 align=PP_ALIGN.CENTER)
 
     # =========================================================================
-    # Save the presentation
+    # SLIDE 12: The Ask / CTA
+    # =========================================================================
+    slide12 = prs.slides.add_slide(prs.slide_layouts[6])
+    set_slide_background(slide12)
+
+    # Top accent line
+    line = slide12.shapes.add_shape(MSO_SHAPE.RECTANGLE,
+                                     Inches(MARGIN), Inches(0.4),
+                                     Inches(SLIDE_WIDTH - 2*MARGIN), Inches(0.03))
+    line.fill.solid()
+    line.fill.fore_color.rgb = YELLOW
+    line.line.fill.background()
+
+    # Logo
+    add_text_box(slide12, MARGIN, 1.2, SLIDE_WIDTH - 2*MARGIN, 1, "TAGO",
+                 font_size=100, font_color=WHITE,
+                 align=PP_ALIGN.CENTER)
+
+    add_text_box(slide12, MARGIN, 2.4, SLIDE_WIDTH - 2*MARGIN, 0.8, "LEAP",
+                 font_size=70, font_color=YELLOW, italic=True,
+                 align=PP_ALIGN.CENTER)
+
+    # Tagline
+    add_text_box(slide12, MARGIN, 3.5, SLIDE_WIDTH - 2*MARGIN, 0.5,
+                 "The future of narrative trading is here.",
+                 font_size=22, font_color=WHITE, italic=True,
+                 align=PP_ALIGN.CENTER)
+
+    # Three badges showing achievements
+    badge_y = 4.4
+    add_badge(slide12, 3.5, badge_y, "PEAR ✓", width=2)
+    add_badge(slide12, 5.8, badge_y, "LI.FI ✓", width=2)
+    add_badge(slide12, 8.1, badge_y, "SALT ✓", width=2)
+
+    # The Ask box
+    add_card(slide12, 3, 5.2, 7.333, 1.3, has_border=True, border_color=YELLOW)
+
+    add_text_box(slide12, 3.2, 5.4, 7, 0.4, "The Ask",
+                 font_size=16, font_color=YELLOW)
+    add_text_box(slide12, 3.2, 5.8, 7, 0.6,
+                 "Award TAGO Leap the PEAR, LI.FI, and SALT bounties",
+                 font_size=18, font_color=WHITE,
+                 align=PP_ALIGN.CENTER)
+
+    # Thank you
+    add_text_box(slide12, MARGIN, 6.8, SLIDE_WIDTH - 2*MARGIN, 0.4,
+                 "Thank you!",
+                 font_size=28, font_color=WHITE,
+                 align=PP_ALIGN.CENTER)
+
+    # Bottom accent line
+    line2 = slide12.shapes.add_shape(MSO_SHAPE.RECTANGLE,
+                                      Inches(MARGIN), Inches(7.1),
+                                      Inches(SLIDE_WIDTH - 2*MARGIN), Inches(0.03))
+    line2.fill.solid()
+    line2.fill.fore_color.rgb = YELLOW
+    line2.line.fill.background()
+
+    # =========================================================================
+    # Save
     # =========================================================================
     output_path = "/Users/kevinapetrei/hyperstack/TAGO_Leap_Pitch_Deck.pptx"
     prs.save(output_path)
-    print(f"Presentation saved to: {output_path}")
+    print(f"✓ Presentation saved to: {output_path}")
+    print(f"  • 12 slides")
+    print(f"  • Inter font family")
+    print(f"  • Black/White/Yellow branding")
+    print(f"  • All 3 bounties covered")
     return output_path
+
 
 if __name__ == "__main__":
     create_presentation()
