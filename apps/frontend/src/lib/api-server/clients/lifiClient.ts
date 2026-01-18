@@ -119,14 +119,19 @@ export async function getSupportedOptions(): Promise<SupportedOption[]> {
 }
 
 function getFallbackOptions(): SupportedOption[] {
+  const USDC_LOGO = 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png';
+  const USDT_LOGO = 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xdAC17F958D2ee523a2206206994597C13D831ec7/logo.png';
+  const ETH_LOGO = 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png';
+
   return [
     {
       chainId: 1,
       chainName: 'Ethereum',
       chainLogoUri: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/ethereum.svg',
       tokens: [
-        { address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', decimals: 18, logoUri: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png' },
-        { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC', decimals: 6, logoUri: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png' },
+        { address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', decimals: 18, logoUri: ETH_LOGO },
+        { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC', decimals: 6, logoUri: USDC_LOGO },
+        { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', symbol: 'USDT', decimals: 6, logoUri: USDT_LOGO },
       ],
     },
     {
@@ -134,8 +139,58 @@ function getFallbackOptions(): SupportedOption[] {
       chainName: 'Arbitrum',
       chainLogoUri: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/arbitrum.svg',
       tokens: [
-        { address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', decimals: 18, logoUri: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png' },
-        { address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', symbol: 'USDC', decimals: 6, logoUri: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png' },
+        { address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', decimals: 18, logoUri: ETH_LOGO },
+        { address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', symbol: 'USDC', decimals: 6, logoUri: USDC_LOGO },
+        { address: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', symbol: 'USDT', decimals: 6, logoUri: USDT_LOGO },
+      ],
+    },
+    {
+      chainId: 10,
+      chainName: 'Optimism',
+      chainLogoUri: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/optimism.svg',
+      tokens: [
+        { address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', decimals: 18, logoUri: ETH_LOGO },
+        { address: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', symbol: 'USDC', decimals: 6, logoUri: USDC_LOGO },
+        { address: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58', symbol: 'USDT', decimals: 6, logoUri: USDT_LOGO },
+      ],
+    },
+    {
+      chainId: 137,
+      chainName: 'Polygon',
+      chainLogoUri: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/polygon.svg',
+      tokens: [
+        { address: '0x0000000000000000000000000000000000000000', symbol: 'MATIC', decimals: 18, logoUri: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/polygon/info/logo.png' },
+        { address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', symbol: 'USDC', decimals: 6, logoUri: USDC_LOGO },
+        { address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', symbol: 'USDT', decimals: 6, logoUri: USDT_LOGO },
+      ],
+    },
+    {
+      chainId: 8453,
+      chainName: 'Base',
+      chainLogoUri: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/base.svg',
+      tokens: [
+        { address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', decimals: 18, logoUri: ETH_LOGO },
+        { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', symbol: 'USDC', decimals: 6, logoUri: USDC_LOGO },
+      ],
+    },
+    {
+      chainId: 56,
+      chainName: 'BNB Chain',
+      chainLogoUri: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/bsc.svg',
+      tokens: [
+        { address: '0x0000000000000000000000000000000000000000', symbol: 'BNB', decimals: 18, logoUri: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/binance/info/logo.png' },
+        { address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', symbol: 'USDC', decimals: 18, logoUri: USDC_LOGO },
+        { address: '0x55d398326f99059fF775485246999027B3197955', symbol: 'USDT', decimals: 18, logoUri: USDT_LOGO },
+      ],
+    },
+    {
+      chainId: 43114,
+      chainName: 'Avalanche',
+      chainLogoUri: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/avalanche.svg',
+      tokens: [
+        { address: '0x0000000000000000000000000000000000000000', symbol: 'AVAX', decimals: 18, logoUri: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/avalanchec/info/logo.png' },
+        { address: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E', symbol: 'USDC', decimals: 6, logoUri: USDC_LOGO },
+        { address: '0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7', symbol: 'USDT', decimals: 6, logoUri: USDT_LOGO },
       ],
     },
     {
@@ -144,7 +199,7 @@ function getFallbackOptions(): SupportedOption[] {
       chainLogoUri: 'https://app.hyperliquid.xyz/icons/hyperliquid.svg',
       tokens: [
         { address: '0x0000000000000000000000000000000000000000', symbol: 'HYPE', decimals: 18, logoUri: 'https://app.hyperliquid.xyz/icons/hyperliquid.svg' },
-        { address: '0xb88339CB7199b77E23DB6E890353E22632Ba630f', symbol: 'USDC', decimals: 6, logoUri: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png' },
+        { address: '0xb88339CB7199b77E23DB6E890353E22632Ba630f', symbol: 'USDC', decimals: 6, logoUri: USDC_LOGO },
       ],
     },
   ];

@@ -128,13 +128,39 @@ export function useAgentWallet(): UseAgentWalletReturn {
   // This requires the user to sign an EIP-712 message for Hyperliquid
   const approveAgentWallet = useCallback(async (agentAddress: string) => {
     if (!address) {
-      setError('Wallet not connected');
-      return;
+      const err = 'Wallet not connected';
+      setError(err);
+      throw new Error(err);
     }
 
-    if (!walletClient) {
-      setError('Wallet client not ready');
-      return;
+    // Wait for wallet client to be ready (up to 5 seconds)
+    let client = walletClient;
+    if (!client) {
+      console.log('[useAgentWallet] Waiting for wallet client...');
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r => setTimeout(r, 500));
+        // Re-check - wagmi should update the walletClient
+        const ethereum = (window as any).ethereum;
+        if (ethereum) {
+          const { createWalletClient, custom } = await import('viem');
+          const accounts = await ethereum.request({ method: 'eth_accounts' });
+          if (accounts?.length) {
+            const chainIdHex = await ethereum.request({ method: 'eth_chainId' });
+            client = createWalletClient({
+              account: accounts[0] as `0x${string}`,
+              chain: { id: parseInt(chainIdHex, 16) } as any,
+              transport: custom(ethereum),
+            });
+            break;
+          }
+        }
+      }
+    }
+
+    if (!client) {
+      const err = 'Wallet not ready. Please try again.';
+      setError(err);
+      throw new Error(err);
     }
 
     // Use the wallet's actual connected chainId - Hyperliquid accepts signatures from any chain
@@ -180,7 +206,7 @@ export function useAgentWallet(): UseAgentWalletReturn {
       });
 
       // Sign the approval message using wallet client directly
-      const signatureHex = await walletClient.signTypedData({
+      const signatureHex = await client.signTypedData({
         account: address,
         domain,
         types,

@@ -17,21 +17,46 @@ async function getLifiSdk() {
   return lifiSdk;
 }
 
-async function configureLifiWithWallet(switchChain: (chainId: number) => Promise<void>) {
+async function configureLifiWithWallet(
+  switchChain: (chainId: number) => Promise<void>,
+  walletAddress: string
+) {
   const sdk = await getLifiSdk();
   const { createWalletClient, custom } = await import('viem');
+
   const getWalletClientForChain = async (chainId?: number) => {
     const ethereum = (window as any).ethereum;
-    if (!ethereum) throw new Error('No wallet provider found');
-    const accounts = await ethereum.request({ method: 'eth_accounts' });
-    if (!accounts?.length) throw new Error('No accounts connected');
+    if (!ethereum) throw new Error('No wallet provider found. Please refresh the page.');
+
+    // Use the wagmi address we already have, but verify wallet is accessible
+    let accounts: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      try {
+        accounts = await ethereum.request({ method: 'eth_accounts' });
+        if (accounts?.length) break;
+        // If no accounts, try requesting access
+        if (i === 0) {
+          accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+          if (accounts?.length) break;
+        }
+      } catch (e) {
+        console.warn('Wallet access attempt failed:', e);
+      }
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    // Fall back to wagmi address if eth_accounts fails but we have a connected address
+    const account = accounts?.[0] || walletAddress;
+    if (!account) throw new Error('Wallet disconnected. Please reconnect your wallet.');
+
     const currentChainHex = await ethereum.request({ method: 'eth_chainId' });
     return createWalletClient({
-      account: accounts[0] as `0x${string}`,
+      account: account as `0x${string}`,
       chain: { id: chainId || parseInt(currentChainHex, 16) } as any,
       transport: custom(ethereum),
     });
   };
+
   sdk.createConfig({
     integrator: 'tago-leap',
     apiKey: process.env.NEXT_PUBLIC_LIFI_API_KEY,
@@ -40,7 +65,7 @@ async function configureLifiWithWallet(switchChain: (chainId: number) => Promise
         getWalletClient: async () => getWalletClientForChain(),
         switchChain: async (chainId) => {
           await switchChain(chainId);
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Increased wait time
           return getWalletClientForChain(chainId);
         },
       }),
@@ -355,7 +380,11 @@ export function DepositModal({ isOpen, onClose }: DepositModalProps) {
   };
 
   const handleExecuteSwap = async () => {
-    if (!quote || !walletClient) { showToast('error', 'Missing quote'); return; }
+    if (!quote) { showToast('error', 'Missing quote'); return; }
+    if (!walletClient || !address) {
+      showToast('error', 'Wallet not connected. Please reconnect.');
+      return;
+    }
     const isDirectDeposit = quote.recommended?.routeId === 'direct' || quote.recommended?.tags?.includes('DIRECT');
     if (!lifiRoute && !isDirectDeposit) { showToast('error', 'Missing route'); return; }
 
@@ -363,18 +392,60 @@ export function DepositModal({ isOpen, onClose }: DepositModalProps) {
 
     try {
       if (lifiRoute) {
-        showToast('info', 'Bridging...');
-        await configureLifiWithWallet(async (chainId) => { await switchChainAsync({ chainId: chainId as any }); });
+        showToast('info', 'Bridging to Arbitrum...');
+        await configureLifiWithWallet(async (chainId) => { await switchChainAsync({ chainId: chainId as any }); }, address!);
         const sdk = await getLifiSdk();
-        await sdk.executeRoute(lifiRoute!, { updateRouteHook: (r) => setLifiRoute(r), acceptExchangeRateUpdateHook: async () => true });
+        await sdk.executeRoute(lifiRoute!, {
+          updateRouteHook: (r) => setLifiRoute(r),
+          acceptExchangeRateUpdateHook: async () => true,
+          infiniteApproval: true, // Use infinite approval to avoid future approval signatures
+        });
         if (quote.id && txHash) { try { await lifiApi.trackOnboarding({ flowId: quote.id, txHashes: [txHash] }); } catch {} }
+
+        // Wait for funds to arrive on Arbitrum - poll balance
+        showToast('info', 'Waiting for bridge confirmation...');
+        const expectedAmount = parseUnits(quote.recommended?.toAmountFormatted || '0', 6);
+        await waitForArbitrumBalance(address, expectedAmount);
       }
+
       setFlowStatus('depositing');
-      await new Promise(r => setTimeout(r, 2000));
+      showToast('info', 'Depositing to Hyperliquid...');
       await depositToHyperliquidL1();
-      setSuccess(true); setFlowStatus('completed'); showToast('success', 'Complete!');
-    } catch (err: any) { showToast('error', err.message || 'Failed'); setFlowStatus('failed'); }
+      setSuccess(true); setFlowStatus('completed'); showToast('success', 'Deposit complete!');
+    } catch (err: any) {
+      console.error('Deposit error:', err);
+      showToast('error', err.message || 'Failed');
+      setFlowStatus('failed');
+    }
     finally { setLoading(false); }
+  };
+
+  // Wait for USDC balance on Arbitrum after bridging
+  const waitForArbitrumBalance = async (walletAddr: string, expectedAmount: bigint) => {
+    const { createPublicClient, http } = await import('viem');
+    const { arbitrum } = await import('viem/chains');
+    const publicClient = createPublicClient({ chain: arbitrum, transport: http() });
+
+    const maxAttempts = 60; // 5 minutes max
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const balance = await publicClient.readContract({
+          address: ARBITRUM_USDC as `0x${string}`,
+          abi: ERC20_ABI,
+          functionName: 'balanceOf',
+          args: [walletAddr as `0x${string}`]
+        }) as bigint;
+
+        // Check if we have at least 90% of expected (accounting for slippage)
+        if (balance >= (expectedAmount * 90n / 100n)) {
+          return;
+        }
+      } catch (e) {
+        console.warn('Balance check failed:', e);
+      }
+      await new Promise(r => setTimeout(r, 5000)); // Wait 5 seconds between checks
+    }
+    throw new Error('Bridge timeout - funds not received on Arbitrum');
   };
 
   const isProcessing = flowStatus !== 'idle' && flowStatus !== 'completed' && flowStatus !== 'failed';
