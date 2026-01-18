@@ -8,6 +8,7 @@ interface SocialTradingLayoutProps {
   rightColumn: ReactNode;
   bottomPanel: ReactNode;
   header?: ReactNode;
+  strategyInfoPanel?: ReactNode;
 }
 
 /**
@@ -23,6 +24,7 @@ export function SocialTradingLayout({
   rightColumn,
   bottomPanel,
   header,
+  strategyInfoPanel,
 }: SocialTradingLayoutProps) {
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden pl-12 pr-12">
@@ -71,6 +73,13 @@ export function SocialTradingLayout({
 
       {/* Bottom Panel - Trade Controls (1/3 height on desktop, fixed on mobile) */}
       <div className="flex-shrink-0 border-t border-white/[0.06] bg-black/40 backdrop-blur-xl">
+        {/* Strategy Info Tab - pulls up from above control panel */}
+        {strategyInfoPanel && (
+          <div className="hidden md:block">
+            {strategyInfoPanel}
+          </div>
+        )}
+
         {/* Desktop/Tablet: Full panel */}
         <div className="hidden md:block">
           {bottomPanel}

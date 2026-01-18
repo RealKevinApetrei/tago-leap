@@ -604,12 +604,37 @@ export default function RoboPage() {
     );
   }
 
+  // Helper to truncate address
+  const truncateAddress = (addr: string | null | undefined) => {
+    if (!addr) return '...';
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  };
+
   // Portfolio content for side panel
   const portfolioContent = (
     <div className="w-full max-w-4xl mx-auto">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Left Column: Stats & Risk */}
         <div className="space-y-4">
+          {/* Address Info Card */}
+          <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
+            <h3 className="text-xs text-white/50 font-medium uppercase tracking-wide mb-3">Addresses</h3>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-white/40">User Wallet</span>
+                <span className="text-xs text-white/70 font-mono">{truncateAddress(address)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-white/40">Salt Manager</span>
+                <span className="text-xs text-white/70 font-mono">{truncateAddress(account?.salt_account_address)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-white/40">Pear Agent</span>
+                <span className="text-xs text-white/70 font-mono">{truncateAddress(agentWalletAddress)}</span>
+              </div>
+            </div>
+          </div>
+
           {/* Account Summary Card */}
           <div className="bg-gradient-to-br from-white/[0.05] to-transparent border border-white/[0.08] rounded-xl p-4 space-y-3">
             <h3 className="text-xs text-white/50 font-medium uppercase tracking-wide">Account</h3>
@@ -708,6 +733,41 @@ export default function RoboPage() {
                   <span className="text-xs text-white/40">Max Drawdown</span>
                   <p className="text-sm text-white font-medium">{policyLimits.maxDrawdownPct}%</p>
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* Recent Pear Executions */}
+          <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
+            <h3 className="text-xs text-white/50 font-medium uppercase tracking-wide mb-3">Pear Executions</h3>
+            {trades.length === 0 ? (
+              <p className="text-xs text-white/30 text-center py-2">No executions yet</p>
+            ) : (
+              <div className="space-y-2">
+                {trades.slice(0, 4).map((trade) => {
+                  const payload = trade.pear_order_payload;
+                  const longAssets = payload?.longAssets || [];
+                  const shortAssets = payload?.shortAssets || [];
+                  const tradeLabel = longAssets.length > 0 && shortAssets.length > 0
+                    ? `${longAssets.map(a => a.asset).join('+')} vs ${shortAssets.map(a => a.asset).join('+')}`
+                    : longAssets.length > 0
+                    ? `Long ${longAssets.map(a => a.asset).join('+')}`
+                    : `Short ${shortAssets.map(a => a.asset).join('+')}`;
+
+                  return (
+                    <div key={trade.id} className="flex items-center justify-between py-1.5 border-b border-white/[0.05] last:border-0">
+                      <span className="text-xs text-white/70 truncate">{tradeLabel}</span>
+                      <Badge variant={trade.status === 'completed' ? 'success' : trade.status === 'pending' ? 'info' : 'error'} className="text-[9px]">
+                        {trade.status === 'completed' ? 'OK' : trade.status}
+                      </Badge>
+                    </div>
+                  );
+                })}
+                {trades.length > 4 && (
+                  <button onClick={() => setPortfolioView('history')} className="text-[10px] text-white/40 hover:text-white/60 w-full text-center pt-1">
+                    +{trades.length - 4} more
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -829,16 +889,45 @@ export default function RoboPage() {
                     const date = new Date(trade.created_at);
                     const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                     const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-                    const isLong = trade.direction?.toLowerCase().includes('long');
-                    const isShort = trade.direction?.toLowerCase().includes('short');
+
+                    // Extract assets from pear_order_payload
+                    const payload = trade.pear_order_payload;
+                    const longAssets = payload?.longAssets || [];
+                    const shortAssets = payload?.shortAssets || [];
+                    const leverage = payload?.leverage || 1;
+
+                    // Determine trade type and generate display name
+                    const hasLong = longAssets.length > 0;
+                    const hasShort = shortAssets.length > 0;
+                    const isPair = hasLong && hasShort;
+                    const isBasket = (longAssets.length > 1) || (shortAssets.length > 1);
+
+                    // Generate trade name
+                    let tradeName = '';
+                    if (isPair) {
+                      // Pair trade: "BTC vs ETH" or "AI vs L1" for baskets
+                      const longSymbols = longAssets.map(a => a.asset).join('+');
+                      const shortSymbols = shortAssets.map(a => a.asset).join('+');
+                      tradeName = `${longSymbols} vs ${shortSymbols}`;
+                    } else if (hasLong) {
+                      // Long only
+                      const symbols = longAssets.map(a => a.asset).join(', ');
+                      tradeName = isBasket ? `Long ${symbols}` : `Long ${symbols}`;
+                    } else if (hasShort) {
+                      // Short only
+                      const symbols = shortAssets.map(a => a.asset).join(', ');
+                      tradeName = isBasket ? `Short ${symbols}` : `Short ${symbols}`;
+                    } else {
+                      tradeName = trade.narrative_id !== 'custom' ? trade.narrative_id : 'Trade';
+                    }
 
                     return (
                       <div key={trade.id} className="p-3 bg-white/[0.02] rounded-xl border border-white/[0.06] hover:bg-white/[0.04] hover:border-white/[0.10] transition-all">
-                        {/* Top row: Narrative + Status */}
+                        {/* Top row: Trade Name + Status */}
                         <div className="flex items-center justify-between gap-2 mb-2">
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="text-sm text-white font-medium truncate">
-                              {trade.narrative_id || 'Manual Trade'}
+                              {tradeName}
                             </span>
                             {trade.source === 'salt' && (
                               <span className="flex-shrink-0 text-[9px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded font-medium">AUTO</span>
@@ -851,13 +940,28 @@ export default function RoboPage() {
                           </Badge>
                         </div>
 
+                        {/* Asset badges row */}
+                        {(hasLong || hasShort) && (
+                          <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+                            {longAssets.map((a) => (
+                              <span key={`long-${a.asset}`} className="text-[10px] text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded">
+                                ↑{a.asset}
+                              </span>
+                            ))}
+                            {isPair && <span className="text-white/20 text-[10px]">vs</span>}
+                            {shortAssets.map((a) => (
+                              <span key={`short-${a.asset}`} className="text-[10px] text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded">
+                                ↓{a.asset}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
                         {/* Bottom row: Details */}
                         <div className="flex items-center justify-between text-xs">
                           <div className="flex items-center gap-3 text-white/50">
-                            {/* Direction */}
-                            <span className={`font-medium ${isLong ? 'text-green-400' : isShort ? 'text-red-400' : 'text-white/60'}`}>
-                              {isLong ? '↑ Long' : isShort ? '↓ Short' : trade.direction}
-                            </span>
+                            {/* Leverage */}
+                            <span className="text-white/40">{leverage}x</span>
                             {/* Stake */}
                             <span className="text-white/40">
                               ${Number(trade.stake_usd).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
@@ -891,6 +995,16 @@ export default function RoboPage() {
     </div>
   );
 
+  // Calculate win rate from trades
+  const completedTrades = trades.filter(t => t.status === 'completed');
+  const winningTrades = completedTrades.filter(t => {
+    // Consider a trade "winning" if it's completed (simplified - would need P&L data for real calculation)
+    return t.status === 'completed';
+  });
+  const calculatedWinRate = completedTrades.length > 0
+    ? (winningTrades.length / completedTrades.length) * 100
+    : undefined;
+
   // Risk content for side panel
   const riskContent = (
     <RiskManagementTab
@@ -904,6 +1018,20 @@ export default function RoboPage() {
       onSavePolicy={handleSavePolicy}
       showToast={showToast}
       allowedTokens={allowedTokens}
+      // Hedge fund metrics
+      todayNotional={todayNotional}
+      remainingNotional={remainingNotional}
+      currentDrawdown={0}
+      unrealizedPnl={hlBalance?.unrealizedPnl ?? totalPnl}
+      accountHealth={hlBalance?.accountHealth}
+      winRate={calculatedWinRate}
+      totalTrades={completedTrades.length}
+      // Strategy props for SALT compliance
+      availableStrategies={availableStrategies}
+      userStrategies={userStrategies}
+      recentRuns={recentRuns}
+      isTogglingStrategy={isToggling}
+      onToggleStrategy={toggleStrategy}
     />
   );
 

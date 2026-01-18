@@ -178,13 +178,7 @@ export function TweetCard({
               `}
               whileHover={{ scale: 1.02, y: -1 }}
               whileTap={{ scale: 0.98 }}
-              animate={isSelected ? {
-                boxShadow: ['0 0 0 rgba(232, 255, 0, 0)', '0 0 15px rgba(232, 255, 0, 0.3)', '0 0 0 rgba(232, 255, 0, 0)'],
-              } : {}}
-              transition={{
-                duration: 0.15,
-                boxShadow: { duration: 1.5, repeat: isSelected ? Infinity : 0 }
-              }}
+              transition={{ duration: 0.15 }}
             >
               {isSelected ? 'Selected' : 'Select'}
             </motion.button>

@@ -9,7 +9,7 @@ export interface StrategyDefinition {
   name: string;
   description: string;
   riskLevel: 'conservative' | 'standard' | 'degen';
-  defaultParams: Record<string, unknown>;
+  defaultParams?: Record<string, unknown>;
 }
 
 // User's strategy instance

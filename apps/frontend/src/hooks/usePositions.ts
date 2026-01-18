@@ -155,7 +155,7 @@ export function usePositions(): UsePositionsReturn {
     }
   }, [address]);
 
-  // Close a position - this would need to go through Pear/Hyperliquid API
+  // Close a position via Pear API (places an opposite order)
   const closePosition = useCallback(async (positionId: string) => {
     if (!address) {
       setError('Wallet not connected');
@@ -176,19 +176,52 @@ export function usePositions(): UsePositionsReturn {
         throw new Error('Position not found');
       }
 
-      // TODO: Implement close via Pear API or direct Hyperliquid
-      // For now, show an error message directing users to Hyperliquid
-      throw new Error(`Please close ${coin} position directly on Hyperliquid`);
+      // Determine if it's a long or short position
+      const isLong = position.longAssets.length > 0;
+      const positionAssets = isLong ? position.longAssets : position.shortAssets;
 
-      // Refresh positions after closing
-      // await refresh();
+      if (positionAssets.length === 0) {
+        throw new Error('No assets in position');
+      }
+
+      // Get the asset info
+      const asset = positionAssets[0].asset;
+      const size = position.usdValue;
+      const leverage = position.leverage;
+
+      console.log('[usePositions] Closing position:', { asset, size, isLong, leverage });
+
+      // Call our close-by-asset API
+      const response = await fetch('/api/pear/positions/close-by-asset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          walletAddress: address,
+          asset,
+          size,
+          isLong,
+          leverage,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error?.message || 'Failed to close position');
+      }
+
+      console.log('[usePositions] Position closed:', data);
+
+      // Wait a moment for Hyperliquid to process, then refresh positions
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      await refresh();
     } catch (err: any) {
       console.error('[usePositions] Failed to close position:', err);
       setError(err?.message || 'Failed to close position');
     } finally {
       setIsClosing(false);
     }
-  }, [address, positions]);
+  }, [address, positions, refresh]);
 
   // Load positions on mount and when address changes
   useEffect(() => {

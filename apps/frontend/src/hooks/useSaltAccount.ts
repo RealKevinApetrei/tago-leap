@@ -29,6 +29,20 @@ interface SaltStrategy {
   active: boolean;
 }
 
+interface TradeAsset {
+  asset: string;
+  weight: number;
+}
+
+interface PearOrderPayload {
+  longAssets: TradeAsset[];
+  shortAssets: TradeAsset[];
+  leverage: number;
+  usdValue: number;
+  slippage: number;
+  executionType: string;
+}
+
 interface Trade {
   id: string;
   narrative_id: string;
@@ -38,6 +52,7 @@ interface Trade {
   created_at: string;
   source: string;
   account_ref: string | null;
+  pear_order_payload?: PearOrderPayload;
 }
 
 interface UseSaltAccountReturn {

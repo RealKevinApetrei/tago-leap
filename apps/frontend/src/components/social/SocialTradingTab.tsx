@@ -9,10 +9,11 @@ import { type CryptoTweet, type TweetCategory } from './TweetCard';
 import { TwitterFeedColumn } from './TwitterFeedColumn';
 import { CenterPanel } from './CenterPanel';
 import { TradeControlPanel } from './TradeControlPanel';
-import { XListSelector, type CategoryFilter } from './XListSelector';
+import { StrategyInfoTab } from './StrategyInfoTab';
 import { useSocialTrade, SocialTradeProvider } from '@/contexts/SocialTradeContext';
 import { useUnifiedSetupContext } from '@/contexts/UnifiedSetupContext';
 import { saltApi, NarrativeSuggestion } from '@/lib/api';
+import { MOCK_TWEETS, getShuffledTweets } from '@/data/mockTweets';
 
 interface SocialTradingTabProps {
   accountId: string | null;
@@ -55,80 +56,31 @@ function SocialTradingContent({
   // On the robo page, we assume setup (steps 1-5) is already complete
   // Users only need to connect X here
   const {
-    xAccount,
     isXConnected,
     isConnectingX,
     connectX,
   } = useUnifiedSetupContext();
 
-  // Twitter lists state
-  const [xLists, setXLists] = useState<{ id: string; name: string; memberCount: number }[]>([]);
-  const [selectedListId, setSelectedListId] = useState<string | null>(null);
-  const [isLoadingLists, setIsLoadingLists] = useState(false);
-
   // Tweet feed state
   const [tweets, setTweets] = useState<CryptoTweet[]>([]);
   const [isLoadingTweets, setIsLoadingTweets] = useState(true);
-  const [feedError, setFeedError] = useState<string | null>(null);
-
-  // Category filter state
-  const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('trending');
 
   // Execution state
   const [isExecuting, setIsExecuting] = useState(false);
   const [executeError, setExecuteError] = useState<string | null>(null);
 
-  // Fetch X lists when connected
+  // Load mock tweets (demo mode)
   useEffect(() => {
-    if (!xAccount || !walletAddress) return;
+    setIsLoadingTweets(true);
 
-    const fetchLists = async () => {
-      setIsLoadingLists(true);
-      try {
-        const response = await fetch(`/api/twitter/lists?wallet=${walletAddress}`);
-        const data = await response.json();
-        setXLists(data.lists || []);
-      } catch (err) {
-        console.error('Failed to fetch lists:', err);
-      } finally {
-        setIsLoadingLists(false);
-      }
-    };
+    // Simulate loading delay for realism
+    const timer = setTimeout(() => {
+      setTweets(getShuffledTweets());
+      setIsLoadingTweets(false);
+    }, 500);
 
-    fetchLists();
-  }, [xAccount, walletAddress]);
-
-  // Fetch tweets
-  useEffect(() => {
-    const fetchTweets = async () => {
-      setIsLoadingTweets(true);
-      setFeedError(null);
-
-      try {
-        const params = new URLSearchParams();
-        if (selectedListId) params.set('listId', selectedListId);
-
-        const response = await fetch(`/api/twitter/feed?${params.toString()}`, {
-          headers: walletAddress ? { Authorization: `Bearer ${walletAddress}` } : {},
-        });
-
-        const data = await response.json();
-
-        if (data.error && !data.tweets?.length) {
-          setFeedError(data.error);
-        }
-
-        setTweets(data.tweets || []);
-      } catch (err) {
-        console.error('Failed to fetch tweets:', err);
-        setFeedError('Failed to load tweets');
-      } finally {
-        setIsLoadingTweets(false);
-      }
-    };
-
-    fetchTweets();
-  }, [selectedListId, walletAddress]);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Handle Bullish button
   const handleBullish = useCallback((tweet: CryptoTweet) => {
@@ -188,26 +140,8 @@ function SocialTradingContent({
       .slice(0, 20);
   };
 
-  // Header with list selector and category filters (only when X connected)
-  const header = isXConnected ? (
-    <div className="flex items-center justify-end px-4 py-3">
-      <div className="flex items-center gap-3">
-        <XListSelector
-          lists={xLists}
-          selectedListId={selectedListId}
-          onSelect={setSelectedListId}
-          isLoading={isLoadingLists}
-          selectedCategory={selectedCategory}
-          onCategoryChange={setSelectedCategory}
-        />
-        {feedError && (
-          <span className="px-2 py-1 text-xs text-yellow-400 bg-yellow-400/10 rounded-lg">
-            Mock Data
-          </span>
-        )}
-      </div>
-    </div>
-  ) : null;
+  // No header needed - columns have their own titles
+  const header = null;
 
   // Left column - AI tweets
   const leftColumn = (
@@ -223,22 +157,17 @@ function SocialTradingContent({
     />
   );
 
-  // Center column - Trending or Your Narrative
+  // Center column - Always "Your Narrative"
   const centerColumn = (
     <div className="h-full overflow-hidden">
-      <ColumnHeader title={selectedTweet ? 'Your Narrative' : 'Trending'} />
+      <ColumnHeader title="Your Narrative" />
       <CenterPanel
-        tweets={getTrendingTweets()}
-        isLoading={isLoadingTweets}
         selectedTweet={selectedTweet}
         onClearSelection={clearSelection}
         customNarrative={customNarrative}
         onNarrativeChange={setCustomNarrative}
         onGenerateTrade={generateFromCustom}
         isGenerating={isGenerating}
-        onBullish={handleBullish}
-        onBearish={handleBearish}
-        onSelect={handleSelect}
       />
     </div>
   );
@@ -254,6 +183,18 @@ function SocialTradingContent({
       onBullish={handleBullish}
       onBearish={handleBearish}
       onSelect={handleSelect}
+    />
+  );
+
+  // Strategy Info panel - shows above trade controls
+  const strategyInfoPanel = (
+    <StrategyInfoTab
+      suggestion={suggestion}
+      todayNotional={0}
+      maxDailyNotional={100000}
+      accountHealth={accountHealth}
+      availableBalance={availableBalance}
+      maxLeverage={maxLeverage}
     />
   );
 
@@ -289,6 +230,7 @@ function SocialTradingContent({
       centerColumn={centerColumn}
       rightColumn={rightColumn}
       bottomPanel={bottomPanel}
+      strategyInfoPanel={strategyInfoPanel}
     />
   );
 }

@@ -197,21 +197,21 @@ export function SidePanelsProvider({
           border-l border-white/[0.08]
           shadow-2xl shadow-black/50
           transition-transform duration-500 ease-out
-          overflow-y-auto
+          flex flex-col
           ${activePanel === 'risk' ? 'translate-x-0' : 'translate-x-full'}
         `}
       >
         {/* Panel Header */}
-        <div className="sticky top-0 z-10 flex items-center justify-between p-6 bg-black/80 backdrop-blur-md border-b border-white/[0.05]">
+        <div className="flex-shrink-0 flex items-center justify-between p-4 bg-black/80 backdrop-blur-md border-b border-white/[0.05]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
-              <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+              <svg className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
               </svg>
             </div>
             <div>
-              <h2 className="text-xl font-light text-white">Risk Management</h2>
-              <p className="text-xs text-white/40">Configure your trading limits and safety rails</p>
+              <h2 className="text-base font-light text-white">Risk Management</h2>
+              <p className="text-[10px] text-white/40">Trading limits & strategies</p>
             </div>
           </div>
           <button
@@ -224,8 +224,8 @@ export function SidePanelsProvider({
           </button>
         </div>
 
-        {/* Panel Content */}
-        <div className="p-6 relative">
+        {/* Panel Content - flex-1 to fill remaining space */}
+        <div className="flex-1 p-6 relative overflow-y-auto">
           {/* Blur overlay when setup incomplete */}
           {!isSetupComplete && (
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center backdrop-blur-md bg-black/60">

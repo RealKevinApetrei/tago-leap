@@ -163,17 +163,27 @@ export function SocialTradeProvider({ children }: { children: ReactNode }) {
 
   // Generate trade from custom narrative
   const generateFromCustom = useCallback(async () => {
-    if (!selectedTweet || !customNarrative.trim()) return;
+    if (!customNarrative.trim()) return;
 
     setIsGenerating(true);
     setGenerateError(null);
 
     try {
-      const prompt = `Context tweet by @${selectedTweet.authorUsername}: "${selectedTweet.content}"
+      let prompt: string;
+
+      if (selectedTweet) {
+        // Include tweet context if one is selected
+        prompt = `Context tweet by @${selectedTweet.authorUsername}: "${selectedTweet.content}"
 
 User's trading thesis: "${customNarrative}"
 
 Generate a pair trade based on this analysis.`;
+      } else {
+        // Generate from narrative only
+        prompt = `User's trading thesis: "${customNarrative}"
+
+Generate a pair trade based on this market narrative.`;
+      }
 
       const result = await pearApi.suggestNarrative(prompt);
       setSuggestion(result);
