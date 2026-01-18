@@ -56,6 +56,33 @@ function getTimeAgo(dateString: string): string {
   return date.toLocaleDateString();
 }
 
+// Helper to explain what each strategy does with its params
+function getStrategyExplanation(strategyId: string, params?: Record<string, unknown>): string {
+  switch (strategyId) {
+    case 'take-profit': {
+      const tp = (params?.takeProfitPct as number) ?? 5;
+      const sl = (params?.stopLossPct as number) ?? 10;
+      return `Closes at +${tp}% profit or -${sl}% stop loss`;
+    }
+    case 'trailing-stop': {
+      const trail = (params?.trailPct as number) ?? 3;
+      const activation = (params?.activationPct as number) ?? 2;
+      return `After +${activation}% profit, trails ${trail}% below peak`;
+    }
+    case 'vwap-exit': {
+      const minProfit = (params?.minProfitPct as number) ?? 1;
+      return `Exits when price crosses VWAP (min ${minProfit}% profit)`;
+    }
+    case 'adx-momentum': {
+      const adxThreshold = (params?.adxThreshold as number) ?? 25;
+      const minProfit = (params?.minProfitPct as number) ?? 2;
+      return `Exits when ADX < ${adxThreshold} (min ${minProfit}% profit)`;
+    }
+    default:
+      return 'Automated trading strategy';
+  }
+}
+
 // Strategy types
 interface StrategyDefinition {
   id: string;
@@ -73,6 +100,7 @@ interface UserStrategy {
 interface StrategyRun {
   id: string;
   strategy_id: string;
+  strategy_definition_id: string; // The strategy type (e.g., "take-profit")
   status: 'running' | 'completed' | 'failed';
   result: Record<string, unknown> | null;
   error: string | null;
@@ -525,7 +553,12 @@ export function RiskManagementTab({
                             )}
                           </AnimatePresence>
                         </div>
-                        <p className="text-[10px] text-white/40 truncate mt-0.5">{strategy.description}</p>
+                        <p className="text-[10px] text-white/40 truncate mt-0.5">
+                          {isActive && userStrategy
+                            ? getStrategyExplanation(strategy.id, userStrategy.params as Record<string, unknown>)
+                            : strategy.description
+                          }
+                        </p>
                       </div>
                       <motion.button
                         onClick={() => onToggleStrategy?.(strategy.id, !isActive)}
@@ -682,7 +715,7 @@ export function RiskManagementTab({
                   exit={{ opacity: 0 }}
                 >
                   {recentRuns.slice(0, 5).map((run, index) => {
-                    const strategy = displayStrategies.find(s => s.id === run.strategy_id);
+                    const strategy = displayStrategies.find(s => s.id === run.strategy_definition_id);
                     const statusColors = {
                       running: 'text-blue-400 bg-blue-400/10',
                       completed: 'text-emerald-400 bg-emerald-400/10',

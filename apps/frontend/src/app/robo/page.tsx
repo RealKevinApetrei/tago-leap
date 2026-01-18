@@ -1082,7 +1082,15 @@ export default function RoboPage() {
       userStrategies={userStrategies}
       recentRuns={recentRuns}
       isTogglingStrategy={isToggling}
-      onToggleStrategy={toggleStrategy}
+      onToggleStrategy={async (strategyId, active) => {
+        const strategyName = availableStrategies.find(s => s.id === strategyId)?.name || 'Strategy';
+        const result = await toggleStrategy(strategyId, active);
+        if (result.success) {
+          showToast('success', `${strategyName} ${active ? 'enabled' : 'disabled'}`);
+        } else {
+          showToast('error', result.error || 'Failed to update strategy');
+        }
+      }}
     />
   );
 

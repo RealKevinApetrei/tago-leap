@@ -27,11 +27,17 @@ export interface UserStrategy {
 export interface StrategyRun {
   id: string;
   strategy_id: string;
+  strategy_definition_id: string; // The strategy type (e.g., "take-profit")
   status: 'running' | 'completed' | 'failed';
   result: Record<string, unknown> | null;
   error: string | null;
   started_at: string;
   completed_at: string | null;
+}
+
+interface ToggleResult {
+  success: boolean;
+  error?: string;
 }
 
 interface UseStrategiesReturn {
@@ -41,7 +47,7 @@ interface UseStrategiesReturn {
   isLoading: boolean;
   isToggling: boolean;
   error: string | null;
-  toggleStrategy: (strategyId: string, active: boolean) => Promise<void>;
+  toggleStrategy: (strategyId: string, active: boolean) => Promise<ToggleResult>;
   refreshRuns: () => Promise<void>;
 }
 
@@ -104,10 +110,11 @@ export function useStrategies(accountId: string | null): UseStrategiesReturn {
   }, [accountId]);
 
   // Toggle a strategy on/off
-  const toggleStrategy = useCallback(async (strategyId: string, active: boolean) => {
+  const toggleStrategy = useCallback(async (strategyId: string, active: boolean): Promise<ToggleResult> => {
     if (!accountId) {
-      setError('No account');
-      return;
+      const errorMsg = 'No account connected';
+      setError(errorMsg);
+      return { success: false, error: errorMsg };
     }
 
     setIsToggling(true);
@@ -115,15 +122,19 @@ export function useStrategies(accountId: string | null): UseStrategiesReturn {
 
     try {
       await saltApi.updateStrategy(accountId, strategyId, active);
-      // Refresh user strategies
+      // Refresh user strategies and runs
       await fetchUserData();
+      await refreshRuns();
+      return { success: true };
     } catch (err: any) {
       console.error('[useStrategies] Failed to toggle strategy:', err);
-      setError(err?.message || 'Failed to update strategy');
+      const errorMsg = err?.message || 'Failed to update strategy';
+      setError(errorMsg);
+      return { success: false, error: errorMsg };
     } finally {
       setIsToggling(false);
     }
-  }, [accountId, fetchUserData]);
+  }, [accountId, fetchUserData, refreshRuns]);
 
   // Load data on mount and when accountId changes
   useEffect(() => {
