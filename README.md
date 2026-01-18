@@ -23,7 +23,7 @@ TAGO Leap is an AI-powered crypto trading platform built for the Hyperstack Hack
 ### [SALT] Robo Managers
 - Policy-controlled trading accounts
 - Automated strategy execution
-- Risk constraints (max leverage, daily limits, allowed pairs)
+- Risk constraints (max leverage, daily limits, allowed pairs...)
 - Non-custodial - user funds stay in their account
 
 ### Performance Analytics
