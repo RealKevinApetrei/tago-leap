@@ -4,6 +4,11 @@ import { useState, useCallback, useEffect } from 'react';
 import { useAccount, useWalletClient, useChainId } from 'wagmi';
 import { pearApi } from '@/lib/api';
 
+interface ExistingAgent {
+  address: string;
+  name?: string;
+}
+
 interface UseAgentWalletReturn {
   agentWalletAddress: string | null;
   exists: boolean;
@@ -11,6 +16,7 @@ interface UseAgentWalletReturn {
   isCreating: boolean;
   isApproving: boolean;
   needsApproval: boolean;
+  existingAgent: ExistingAgent | null; // Non-Pear agent that's already approved
   error: string | null;
   checkStatus: () => Promise<void>;
   createAgentWallet: () => Promise<string | null>;
@@ -36,6 +42,7 @@ export function useAgentWallet(): UseAgentWalletReturn {
   const [isCreating, setIsCreating] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [needsApproval, setNeedsApproval] = useState(false);
+  const [existingAgent, setExistingAgent] = useState<ExistingAgent | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Check agent wallet status
@@ -43,25 +50,21 @@ export function useAgentWallet(): UseAgentWalletReturn {
     if (!address) {
       setExists(false);
       setAgentWalletAddress(null);
+      setExistingAgent(null);
       setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
     setError(null);
+    setExistingAgent(null);
 
     try {
       // First check if Pear has created an agent wallet
       const status = await pearApi.getAgentWallet(address);
       setAgentWalletAddress(status.agentWalletAddress);
 
-      if (!status.exists || !status.agentWalletAddress) {
-        setExists(false);
-        setNeedsApproval(false);
-        return;
-      }
-
-      // Now check if this agent wallet is actually approved on Hyperliquid
+      // Always check Hyperliquid for existing agents
       const hlResponse = await fetch('https://api.hyperliquid.xyz/info', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -73,26 +76,72 @@ export function useAgentWallet(): UseAgentWalletReturn {
 
       if (hlResponse.ok) {
         const agents = await hlResponse.json();
-        // Check if Pear's agent wallet is in the approved list
-        const isApproved = Array.isArray(agents) && agents.some(
-          (agent: { address: string }) =>
-            agent.address.toLowerCase() === status.agentWalletAddress!.toLowerCase()
-        );
-
         console.log('[useAgentWallet] Hyperliquid agents:', agents);
-        console.log('[useAgentWallet] Pear agent approved:', isApproved);
 
-        setExists(isApproved);
-        setNeedsApproval(!isApproved);
+        if (Array.isArray(agents) && agents.length > 0) {
+          // Check if Pear's agent wallet is in the approved list (by address match)
+          const pearAgentByAddress = status.agentWalletAddress && agents.some(
+            (agent: { address: string }) =>
+              agent.address.toLowerCase() === status.agentWalletAddress!.toLowerCase()
+          );
+
+          // Also check if any agent is named "Pear Protocol" (in case address changed)
+          const pearAgentByName = agents.some(
+            (agent: { address: string; name?: string }) =>
+              agent.name?.toLowerCase().includes('pear')
+          );
+
+          const pearAgentApproved = pearAgentByAddress || pearAgentByName;
+          console.log('[useAgentWallet] Pear agent approved:', pearAgentApproved, { byAddress: pearAgentByAddress, byName: pearAgentByName });
+
+          if (pearAgentApproved) {
+            // Pear agent is already approved - we're good!
+            // Update the agent wallet address to match what's on Hyperliquid if needed
+            if (pearAgentByName && !pearAgentByAddress) {
+              const pearAgent = agents.find(
+                (agent: { address: string; name?: string }) =>
+                  agent.name?.toLowerCase().includes('pear')
+              );
+              if (pearAgent) {
+                setAgentWalletAddress(pearAgent.address);
+              }
+            }
+            setExists(true);
+            setNeedsApproval(false);
+            setExistingAgent(null);
+          } else {
+            // There's a different agent approved (not Pear's)
+            // User needs to revoke it first before approving Pear
+            const otherAgent = agents[0] as { address: string; name?: string };
+            console.log('[useAgentWallet] Different agent already approved:', otherAgent);
+            setExists(false);
+            setNeedsApproval(true);
+            setExistingAgent({
+              address: otherAgent.address,
+              name: otherAgent.name || 'Unknown Agent',
+            });
+          }
+        } else {
+          // No agents approved yet
+          setExists(false);
+          setNeedsApproval(!!status.agentWalletAddress);
+          setExistingAgent(null);
+        }
       } else {
-        // Can't verify, assume needs approval
+        // Can't verify, assume needs approval if we have an agent address
         setExists(false);
-        setNeedsApproval(true);
+        setNeedsApproval(!!status.agentWalletAddress);
+      }
+
+      if (!status.exists || !status.agentWalletAddress) {
+        setExists(false);
+        setNeedsApproval(false);
       }
     } catch (err) {
       console.error('[useAgentWallet] Failed to check status:', err);
       setExists(false);
       setAgentWalletAddress(null);
+      setExistingAgent(null);
     } finally {
       setIsLoading(false);
     }
@@ -131,6 +180,26 @@ export function useAgentWallet(): UseAgentWalletReturn {
       const err = 'Wallet not connected';
       setError(err);
       throw new Error(err);
+    }
+
+    // Check if there's already an existing agent
+    if (existingAgent) {
+      // If it's a Pear agent, we're already approved - just refresh status
+      if (existingAgent.name?.toLowerCase().includes('pear')) {
+        console.log('[useAgentWallet] Pear agent already approved, skipping approval');
+        setExists(true);
+        setNeedsApproval(false);
+        setExistingAgent(null);
+        await checkStatus();
+        return;
+      }
+
+      // If it's a different agent, user needs to revoke it first
+      if (existingAgent.address.toLowerCase() !== agentAddress.toLowerCase()) {
+        const err = `Another agent is already approved (${existingAgent.name || existingAgent.address.slice(0, 10)}...). Please revoke it on Hyperliquid first at app.hyperliquid.xyz before approving Pear.`;
+        setError(err);
+        throw new Error(err);
+      }
     }
 
     // Wait for wallet client to be ready (up to 5 seconds)
@@ -280,7 +349,7 @@ export function useAgentWallet(): UseAgentWalletReturn {
     } finally {
       setIsApproving(false);
     }
-  }, [address, walletClient, chainId, checkStatus]);
+  }, [address, walletClient, chainId, checkStatus, existingAgent]);
 
   // Check status on mount and when address changes
   useEffect(() => {
@@ -289,6 +358,7 @@ export function useAgentWallet(): UseAgentWalletReturn {
     } else {
       setExists(false);
       setAgentWalletAddress(null);
+      setExistingAgent(null);
       setIsLoading(false);
     }
   }, [isConnected, address, checkStatus]);
@@ -300,6 +370,7 @@ export function useAgentWallet(): UseAgentWalletReturn {
     isCreating,
     isApproving,
     needsApproval,
+    existingAgent,
     error,
     checkStatus,
     createAgentWallet,

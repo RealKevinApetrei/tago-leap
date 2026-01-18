@@ -172,18 +172,18 @@ function NarrativeInputPanel({
             <textarea
               value={customNarrative}
               onChange={(e) => onNarrativeChange(e.target.value)}
-              placeholder={displayedPlaceholder || PLACEHOLDER_SUGGESTIONS[0]}
+              placeholder=""
               className="w-full h-36 px-5 py-4 rounded-2xl bg-white/[0.03] border border-white/[0.1]
-                text-white text-lg placeholder-white/25 resize-none
+                text-white text-lg resize-none
                 focus:outline-none focus:ring-2 focus:ring-[#E8FF00]/30 focus:border-[#E8FF00]/30
-                transition-all"
+                transition-colors"
               maxLength={500}
             />
             {/* Typing cursor indicator when placeholder is animating */}
             {customNarrative.length === 0 && (
-              <span className="absolute top-4 left-5 pointer-events-none text-lg text-white/25">
+              <span className="absolute top-4 left-5 pointer-events-none text-lg text-white/30">
                 {displayedPlaceholder}
-                <span className="animate-pulse">|</span>
+                <span className="animate-typing-cursor">|</span>
               </span>
             )}
             <div className="flex items-center justify-between mt-2 px-1">

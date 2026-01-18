@@ -377,11 +377,12 @@ export const saltApi = {
   updateStrategy: (
     accountId: string,
     strategyId: string,
-    active: boolean
+    active: boolean,
+    params?: Record<string, unknown>
   ) =>
     fetchApi<any>(`${config.saltServiceUrl}/accounts/${accountId}/strategies`, {
       method: 'POST',
-      body: JSON.stringify({ strategyId, active }),
+      body: JSON.stringify({ strategyId, active, params }),
     }),
 
   /**

@@ -94,6 +94,7 @@ interface StrategyDefinition {
 interface UserStrategy {
   id: string;
   strategy_id: string;
+  params: Record<string, unknown>;
   active: boolean;
 }
 
@@ -134,8 +135,27 @@ interface RiskManagementTabProps {
   userStrategies?: UserStrategy[];
   recentRuns?: StrategyRun[];
   isTogglingStrategy?: boolean;
-  onToggleStrategy?: (strategyId: string, active: boolean) => Promise<void>;
+  onToggleStrategy?: (strategyId: string, active: boolean, params?: Record<string, unknown>) => Promise<void>;
 }
+
+// Default params for each strategy
+const DEFAULT_STRATEGY_PARAMS: Record<string, Record<string, { label: string; value: number; min: number; max: number; step: number; suffix: string }>> = {
+  'take-profit': {
+    takeProfitPct: { label: 'Take Profit', value: 5, min: 1, max: 50, step: 1, suffix: '%' },
+    stopLossPct: { label: 'Stop Loss', value: 10, min: 1, max: 50, step: 1, suffix: '%' },
+  },
+  'trailing-stop': {
+    activationPct: { label: 'Activation', value: 2, min: 0.5, max: 20, step: 0.5, suffix: '%' },
+    trailPct: { label: 'Trail Distance', value: 3, min: 0.5, max: 20, step: 0.5, suffix: '%' },
+  },
+  'vwap-exit': {
+    minProfitPct: { label: 'Min Profit', value: 1, min: 0, max: 20, step: 0.5, suffix: '%' },
+  },
+  'adx-momentum': {
+    adxThreshold: { label: 'ADX Threshold', value: 25, min: 10, max: 50, step: 1, suffix: '' },
+    minProfitPct: { label: 'Min Profit', value: 2, min: 0, max: 20, step: 0.5, suffix: '%' },
+  },
+};
 
 // Editable stat card component
 function EditableStatCard({
@@ -313,6 +333,8 @@ export function RiskManagementTab({
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [selectedTokens, setSelectedTokens] = useState<Set<string>>(new Set(allowedTokens));
   const [searchQuery, setSearchQuery] = useState('');
+  const [expandedStrategy, setExpandedStrategy] = useState<string | null>(null);
+  const [editedParams, setEditedParams] = useState<Record<string, Record<string, number>>>({});
 
   const { assets: allTokens, categories: tokenCategories, isLoading: assetsLoading, refresh: refreshAssets } = useAvailableAssets();
 
@@ -508,75 +530,176 @@ export function RiskManagementTab({
               {displayStrategies.map((strategy, index) => {
                   const userStrategy = userStrategies.find(us => us.strategy_id === strategy.id);
                   const isActive = userStrategy?.active ?? false;
+                  const isExpanded = expandedStrategy === strategy.id;
+                  const strategyParams = DEFAULT_STRATEGY_PARAMS[strategy.id] || {};
                   const riskColors = {
                     conservative: 'text-emerald-400 bg-emerald-400/10',
                     standard: 'text-tago-yellow-400 bg-tago-yellow-400/10',
                     degen: 'text-red-400 bg-red-400/10',
                   };
 
+                  // Get current param values (edited > user saved > defaults)
+                  const getCurrentParamValue = (paramKey: string) => {
+                    if (editedParams[strategy.id]?.[paramKey] !== undefined) {
+                      return editedParams[strategy.id][paramKey];
+                    }
+                    if (userStrategy?.params?.[paramKey] !== undefined) {
+                      return userStrategy.params[paramKey] as number;
+                    }
+                    return strategyParams[paramKey]?.value ?? 0;
+                  };
+
+                  // Update a param value
+                  const updateParam = (paramKey: string, value: number) => {
+                    setEditedParams(prev => ({
+                      ...prev,
+                      [strategy.id]: {
+                        ...prev[strategy.id],
+                        [paramKey]: value,
+                      },
+                    }));
+                  };
+
+                  // Get all current params for saving
+                  const getAllCurrentParams = () => {
+                    const params: Record<string, number> = {};
+                    Object.keys(strategyParams).forEach(key => {
+                      params[key] = getCurrentParamValue(key);
+                    });
+                    return params;
+                  };
+
                   return (
                     <motion.div
                       key={strategy.id}
-                      className={`flex items-center justify-between p-3 bg-white/[0.02] rounded-lg border transition-colors ${
+                      className={`bg-white/[0.02] rounded-lg border transition-colors overflow-hidden ${
                         isActive ? 'border-tago-yellow-400/30 bg-tago-yellow-400/5' : 'border-white/[0.05]'
                       }`}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.1, type: 'spring', stiffness: 300, damping: 25 }}
-                      whileHover={{
-                        scale: 1.02,
-                        borderColor: 'rgba(232, 255, 0, 0.4)',
-                        transition: { duration: 0.2 }
-                      }}
-                      whileTap={{ scale: 0.98 }}
                     >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-white font-medium truncate">{strategy.name}</span>
-                          <motion.span
-                            className={`text-[9px] px-1.5 py-0.5 rounded uppercase font-medium ${riskColors[strategy.riskLevel]}`}
-                            whileHover={{ scale: 1.1 }}
-                          >
-                            {strategy.riskLevel}
-                          </motion.span>
-                          <AnimatePresence>
-                            {isActive && (
-                              <motion.span
-                                className="text-[9px] px-1.5 py-0.5 rounded uppercase font-medium text-emerald-400 bg-emerald-400/10"
-                                initial={{ opacity: 0, scale: 0, x: -10 }}
-                                animate={{ opacity: 1, scale: 1, x: 0 }}
-                                exit={{ opacity: 0, scale: 0, x: -10 }}
-                                transition={{ type: 'spring', stiffness: 500, damping: 25 }}
-                              >
-                                Active
-                              </motion.span>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                        <p className="text-[10px] text-white/40 truncate mt-0.5">
-                          {isActive && userStrategy
-                            ? getStrategyExplanation(strategy.id, userStrategy.params as Record<string, unknown>)
-                            : strategy.description
-                          }
-                        </p>
-                      </div>
-                      <motion.button
-                        onClick={() => onToggleStrategy?.(strategy.id, !isActive)}
-                        disabled={isTogglingStrategy || !onToggleStrategy}
-                        className={`relative w-10 h-5 rounded-full flex-shrink-0 ml-3 ${
-                          isActive ? 'bg-tago-yellow-400' : 'bg-white/20'
-                        } ${isTogglingStrategy || !onToggleStrategy ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        title={isActive ? 'Disable strategy' : 'Enable strategy'}
-                        whileTap={{ scale: 0.9 }}
-                        animate={{ backgroundColor: isActive ? '#E8FF00' : 'rgba(255,255,255,0.2)' }}
-                        transition={{ duration: 0.2 }}
+                      {/* Strategy Header */}
+                      <div
+                        className="flex items-center justify-between p-3 cursor-pointer hover:bg-white/[0.02] transition-colors"
+                        onClick={() => setExpandedStrategy(isExpanded ? null : strategy.id)}
                       >
-                        <motion.span
-                          className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow"
-                          animate={{ left: isActive ? 20 : 2 }}
-                          transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                        />
-                      </motion.button>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <motion.span
+                              className="text-white/40 text-xs"
+                              animate={{ rotate: isExpanded ? 90 : 0 }}
+                              transition={{ duration: 0.2 }}
+                            >
+                              ▶
+                            </motion.span>
+                            <span className="text-sm text-white font-medium truncate">{strategy.name}</span>
+                            <motion.span
+                              className={`text-[9px] px-1.5 py-0.5 rounded uppercase font-medium ${riskColors[strategy.riskLevel]}`}
+                            >
+                              {strategy.riskLevel}
+                            </motion.span>
+                            <AnimatePresence>
+                              {isActive && (
+                                <motion.span
+                                  className="text-[9px] px-1.5 py-0.5 rounded uppercase font-medium text-emerald-400 bg-emerald-400/10"
+                                  initial={{ opacity: 0, scale: 0, x: -10 }}
+                                  animate={{ opacity: 1, scale: 1, x: 0 }}
+                                  exit={{ opacity: 0, scale: 0, x: -10 }}
+                                  transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+                                >
+                                  Active
+                                </motion.span>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                          <p className="text-[10px] text-white/40 truncate mt-0.5 ml-5">
+                            {getStrategyExplanation(strategy.id, getAllCurrentParams())}
+                          </p>
+                        </div>
+                        <motion.button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            const params = getAllCurrentParams();
+                            onToggleStrategy?.(strategy.id, !isActive, params);
+                          }}
+                          type="button"
+                          disabled={isTogglingStrategy || !onToggleStrategy}
+                          className={`relative z-10 w-10 h-5 rounded-full flex-shrink-0 ml-3 ${
+                            isActive ? 'bg-tago-yellow-400' : 'bg-white/20'
+                          } ${isTogglingStrategy || !onToggleStrategy ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          title={isActive ? 'Disable strategy' : 'Enable strategy'}
+                          whileTap={{ scale: 0.9 }}
+                          animate={{ backgroundColor: isActive ? '#E8FF00' : 'rgba(255,255,255,0.2)' }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <motion.span
+                            className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow"
+                            animate={{ left: isActive ? 20 : 2 }}
+                            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                          />
+                        </motion.button>
+                      </div>
+
+                      {/* Expanded Params */}
+                      <AnimatePresence>
+                        {isExpanded && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="px-3 pb-3 pt-1 border-t border-white/[0.05] space-y-3">
+                              <p className="text-[10px] text-white/30">{strategy.description}</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                {Object.entries(strategyParams).map(([paramKey, paramDef]) => (
+                                  <div key={paramKey} className="bg-white/[0.03] rounded-lg p-2">
+                                    <label className="text-[10px] text-white/50 block mb-1">{paramDef.label}</label>
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="range"
+                                        min={paramDef.min}
+                                        max={paramDef.max}
+                                        step={paramDef.step}
+                                        value={getCurrentParamValue(paramKey)}
+                                        onChange={(e) => updateParam(paramKey, parseFloat(e.target.value))}
+                                        className="flex-1 h-1 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-tago-yellow-400"
+                                      />
+                                      <span className="text-xs text-white font-medium w-10 text-right">
+                                        {getCurrentParamValue(paramKey)}{paramDef.suffix}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                              {/* Save params button if edited */}
+                              {editedParams[strategy.id] && Object.keys(editedParams[strategy.id]).length > 0 && (
+                                <motion.button
+                                  initial={{ opacity: 0, y: -10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const params = getAllCurrentParams();
+                                    onToggleStrategy?.(strategy.id, isActive, params);
+                                    // Clear edited params after saving
+                                    setEditedParams(prev => {
+                                      const { [strategy.id]: _, ...rest } = prev;
+                                      return rest;
+                                    });
+                                  }}
+                                  disabled={isTogglingStrategy}
+                                  className="w-full py-1.5 text-xs bg-tago-yellow-400/20 text-tago-yellow-400 rounded-lg hover:bg-tago-yellow-400/30 transition-colors disabled:opacity-50"
+                                >
+                                  {isTogglingStrategy ? 'Saving...' : 'Save Changes'}
+                                </motion.button>
+                              )}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </motion.div>
                   );
                 })}
@@ -709,63 +832,88 @@ export function RiskManagementTab({
             <AnimatePresence mode="wait">
               {recentRuns.length > 0 ? (
                 <motion.div
-                  className="space-y-2"
+                  className="space-y-2 max-h-[280px] overflow-y-auto"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                 >
-                  {recentRuns.slice(0, 5).map((run, index) => {
+                  {recentRuns.slice(0, 8).map((run, index) => {
                     const strategy = displayStrategies.find(s => s.id === run.strategy_definition_id);
-                    const statusColors = {
-                      running: 'text-blue-400 bg-blue-400/10',
-                      completed: 'text-emerald-400 bg-emerald-400/10',
-                      failed: 'text-red-400 bg-red-400/10',
+                    const statusConfig = {
+                      running: { color: 'text-blue-400 bg-blue-400/10 border-blue-400/20', icon: '◌', label: 'Running' },
+                      completed: { color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20', icon: '✓', label: 'Completed' },
+                      failed: { color: 'text-red-400 bg-red-400/10 border-red-400/20', icon: '✕', label: 'Failed' },
                     };
-                    const statusIcons = {
-                      running: '◌',
-                      completed: '✓',
-                      failed: '✕',
-                    };
-
+                    const status = statusConfig[run.status];
                     const timeAgo = getTimeAgo(run.started_at);
+
+                    // Extract action details from result
+                    const action = run.result?.action as string | undefined;
+                    const closedPositions = run.result?.details?.closedPositions as Array<{ asset: string; reason: string }> | undefined;
+                    const message = run.result?.details?.message as string | undefined;
+
+                    // Determine action display
+                    let actionText = '';
+                    let actionColor = 'text-white/50';
+                    if (action === 'position_closed' && closedPositions?.length) {
+                      actionText = `Closed ${closedPositions.map(p => p.asset).join(', ')}`;
+                      actionColor = 'text-tago-yellow-400';
+                    } else if (action === 'none') {
+                      actionText = message || 'No action needed';
+                    } else if (run.error) {
+                      actionText = run.error.slice(0, 40);
+                      actionColor = 'text-red-400';
+                    }
 
                     return (
                       <motion.div
                         key={run.id}
-                        className="flex items-center justify-between py-2 border-b border-white/[0.05] last:border-0"
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.05, type: 'spring', stiffness: 300, damping: 25 }}
-                        whileHover={{ backgroundColor: 'rgba(255,255,255,0.02)', x: 4 }}
+                        className={`p-2.5 rounded-lg border bg-white/[0.02] ${status.color.split(' ')[2] || 'border-white/[0.05]'}`}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.03, type: 'spring', stiffness: 400, damping: 25 }}
+                        whileHover={{ backgroundColor: 'rgba(255,255,255,0.04)', scale: 1.01 }}
                       >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <motion.span
-                            className={`text-xs px-1.5 py-0.5 rounded ${statusColors[run.status]}`}
-                            animate={run.status === 'running' ? { scale: [1, 1.1, 1] } : {}}
-                            transition={{ repeat: run.status === 'running' ? Infinity : 0, duration: 1 }}
-                          >
-                            {statusIcons[run.status]}
-                          </motion.span>
-                          <span className="text-xs text-white/70 truncate">
-                            {strategy?.name || 'Strategy'}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <motion.span
+                                className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${status.color}`}
+                                animate={run.status === 'running' ? { opacity: [1, 0.5, 1] } : {}}
+                                transition={{ repeat: run.status === 'running' ? Infinity : 0, duration: 1.5 }}
+                              >
+                                {status.icon} {status.label}
+                              </motion.span>
+                              <span className="text-xs font-medium text-white/80 truncate">
+                                {strategy?.name || 'Unknown Strategy'}
+                              </span>
+                            </div>
+                            {actionText && (
+                              <p className={`text-[10px] mt-1 truncate ${actionColor}`}>
+                                {actionText}
+                              </p>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-white/30 flex-shrink-0 whitespace-nowrap">
+                            {timeAgo}
                           </span>
                         </div>
-                        <span className="text-[10px] text-white/40 flex-shrink-0 ml-2">
-                          {timeAgo}
-                        </span>
                       </motion.div>
                     );
                   })}
                 </motion.div>
               ) : (
                 <motion.div
-                  className="text-center py-4"
+                  className="text-center py-6"
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
                 >
-                  <p className="text-xs text-white/30">No robo actions yet</p>
-                  <p className="text-[10px] text-white/20 mt-1">Enable a strategy to start automated trading</p>
+                  <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-white/[0.05] flex items-center justify-center">
+                    <span className="text-lg text-white/30">🤖</span>
+                  </div>
+                  <p className="text-xs text-white/40">No robo actions yet</p>
+                  <p className="text-[10px] text-white/25 mt-1">Enable a strategy to start automated trading</p>
                 </motion.div>
               )}
             </AnimatePresence>

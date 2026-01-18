@@ -47,7 +47,7 @@ interface UseStrategiesReturn {
   isLoading: boolean;
   isToggling: boolean;
   error: string | null;
-  toggleStrategy: (strategyId: string, active: boolean) => Promise<ToggleResult>;
+  toggleStrategy: (strategyId: string, active: boolean, params?: Record<string, unknown>) => Promise<ToggleResult>;
   refreshRuns: () => Promise<void>;
 }
 
@@ -109,32 +109,67 @@ export function useStrategies(accountId: string | null): UseStrategiesReturn {
     }
   }, [accountId]);
 
-  // Toggle a strategy on/off
-  const toggleStrategy = useCallback(async (strategyId: string, active: boolean): Promise<ToggleResult> => {
+  // Toggle a strategy on/off (with optional params)
+  const toggleStrategy = useCallback(async (strategyId: string, active: boolean, params?: Record<string, unknown>): Promise<ToggleResult> => {
     if (!accountId) {
-      const errorMsg = 'No account connected';
-      setError(errorMsg);
-      return { success: false, error: errorMsg };
+      return { success: false, error: 'No account connected' };
     }
+
+    // Optimistic update - flip the switch immediately
+    setUserStrategies(prev => {
+      const existing = prev.find(s => s.strategy_id === strategyId);
+      if (existing) {
+        // Update existing strategy
+        return prev.map(s =>
+          s.strategy_id === strategyId
+            ? { ...s, active, params: params ? { ...s.params, ...params } : s.params }
+            : s
+        );
+      } else {
+        // Add new strategy optimistically
+        return [...prev, {
+          id: `temp-${strategyId}`,
+          salt_account_id: accountId,
+          strategy_id: strategyId,
+          params: params || {},
+          active,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }];
+      }
+    });
 
     setIsToggling(true);
     setError(null);
 
     try {
-      await saltApi.updateStrategy(accountId, strategyId, active);
-      // Refresh user strategies and runs
-      await fetchUserData();
-      await refreshRuns();
+      // API returns the updated strategy
+      const updatedStrategy = await saltApi.updateStrategy(accountId, strategyId, active, params);
+
+      // Update state with the server response (replaces optimistic update with real data)
+      setUserStrategies(prev => {
+        const exists = prev.some(s => s.strategy_id === strategyId);
+        if (exists) {
+          return prev.map(s =>
+            s.strategy_id === strategyId ? updatedStrategy : s
+          );
+        } else {
+          return [...prev.filter(s => s.id !== `temp-${strategyId}`), updatedStrategy];
+        }
+      });
+
       return { success: true };
     } catch (err: any) {
       console.error('[useStrategies] Failed to toggle strategy:', err);
+      // Revert optimistic update on error
+      await fetchUserData();
       const errorMsg = err?.message || 'Failed to update strategy';
       setError(errorMsg);
       return { success: false, error: errorMsg };
     } finally {
       setIsToggling(false);
     }
-  }, [accountId, fetchUserData, refreshRuns]);
+  }, [accountId, fetchUserData]);
 
   // Load data on mount and when accountId changes
   useEffect(() => {

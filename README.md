@@ -2,17 +2,35 @@
 
 **Trade ideas, not tokens.**
 
-TAGO Leap is an AI-powered crypto trading platform built for the Hyperstack Hackathon 2025. It combines narrative-driven trading with seamless cross-chain onboarding and automated strategy execution on Hyperliquid.
+TAGO Leap is a narrative-first trading terminal for [Hyperliquid](https://hyperliquid.xyz). Instead of picking individual tokens, users bet on themes and narratives - AI dominance, ETH killers, meme seasons - and the platform handles position construction, hedging, and risk management automatically.
+
+Built for **HLH 2025** (Hyperliquid Hackathon).
 
 ---
 
-## Features
+## What It Does
 
-### [PEAR] Narrative Trading
-- AI-powered narrative suggestions (AI tokens, DeFi, Memes, L2s)
-- Long/short pair trades with risk scoring
-- Basket trades for sector exposure
-- Betting-style UX - stake, direction, and risk presets
+1. **Describe your thesis** - "AI tokens will outperform ETH over the next month"
+2. **AI suggests a trade** - Claude generates a hedged pair: long TAO/RENDER, short ETH
+3. **One-click execution** - Pear Protocol executes both legs atomically on Hyperliquid
+4. **Automated management** - Salt-powered robo managers enforce risk limits and run exit strategies
+
+---
+
+## Bounty Tracks
+
+### [PEAR] Narrative Trading via Pear Execution API
+
+| Feature | Status |
+|---------|--------|
+| AI-powered trade generation from user thesis | ✅ |
+| Long/short pair execution via Pear OpenPosition API | ✅ |
+| Basket trades (multiple assets per side) | ✅ |
+| EIP-712 auth + JWT token management | ✅ |
+| Position management (fetch, close) | ✅ |
+| Historical backtesting before execution | ✅ |
+
+**Key implementation:** Claude Sonnet generates `NarrativeSuggestion` objects with validated assets, then Pear's API executes atomic pair trades on Hyperliquid L1.
 
 ### [LIFI] One-Click Onboarding
 - Bridge from any chain to Hyperliquid
@@ -37,60 +55,51 @@ TAGO Leap is an AI-powered crypto trading platform built for the Hyperstack Hack
 ## Architecture
 
 ```
-tago-leap/
-├── apps/
-│   └── frontend/          # Next.js 14 app
-├── services/
-│   ├── pear-service/      # Trade execution via Pear Protocol
-│   ├── lifi-service/      # Cross-chain bridging via LI.FI
-│   └── salt-service/      # Policy & strategy management
-├── packages/
-│   └── shared/            # Shared types and utilities
-└── sql/                   # Database migrations
+┌─────────────────────────────────────────────────────────────────┐
+│                        TAGO Leap Frontend                       │
+│                    (Next.js 14 + TailwindCSS)                   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        │                     │                     │
+        ▼                     ▼                     ▼
+┌───────────────┐    ┌───────────────┐    ┌───────────────┐
+│  Pear Service │    │  LIFI Service │    │  Salt Service │
+│   (Fastify)   │    │   (Fastify)   │    │   (Fastify)   │
+└───────┬───────┘    └───────┬───────┘    └───────┬───────┘
+        │                     │                     │
+        ▼                     ▼                     ▼
+┌───────────────┐    ┌───────────────┐    ┌───────────────┐
+│ Pear Protocol │    │    LI.FI      │    │   Supabase    │
+│  (Hyperliquid)│    │  (Bridging)   │    │  (Policies)   │
+└───────────────┘    └───────────────┘    └───────────────┘
 ```
 
 ### Tech Stack
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | Next.js 14, React 18, TailwindCSS |
+| Frontend | Next.js 14, React 18, TailwindCSS, Framer Motion |
 | Wallet | wagmi, RainbowKit, viem |
-| Data | Supabase (PostgreSQL) |
+| Database | Supabase (PostgreSQL) |
 | Charts | Recharts |
 | Services | Fastify (TypeScript) |
+| AI | Anthropic Claude Sonnet |
 | Monorepo | Turborepo, pnpm |
-
-### Integrations
-
-| Service | Purpose |
-|---------|---------|
-| [Pear Protocol](https://pearprotocol.io) | Pair trade execution on Hyperliquid |
-| [LI.FI](https://li.fi) | Cross-chain bridging and swaps |
-| [Salt](https://salt.xyz) | Policy-controlled accounts |
-| [Hyperliquid](https://hyperliquid.xyz) | Perpetual trading |
-| [CoinGecko](https://coingecko.com) | Historical price data |
-| [Anthropic Claude](https://anthropic.com) | AI narrative suggestions |
 
 ---
 
-## Getting Started
-
-### Prerequisites
-
-- Node.js >= 20.0.0
-- pnpm >= 9.0.0
-
-### Installation
+## Quick Start
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/tago-leap.git
+# Clone
+git clone https://github.com/RealKevinApetrei/tago-leap.git
 cd tago-leap
 
-# Install dependencies
+# Install
 pnpm install
 
-# Copy environment variables
+# Configure
 cp .env.example .env
 # Edit .env with your API keys
 ```
@@ -142,133 +151,60 @@ NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your-walletconnect-project-id
 ```bash
 # Start frontend (port 3000)
 pnpm dev
-
-# Or run individual services
-pnpm --filter pear-service dev   # port 3001
-pnpm --filter lifi-service dev   # port 3002
-pnpm --filter salt-service dev   # port 3003
 ```
 
-### Build
-
-```bash
-pnpm build
-```
+**Requirements:** Node.js >= 20, pnpm >= 9
 
 ---
 
-## User Flow
+## Demo Flow
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │   Connect   │────▶│   Onboard   │────▶│    Trade    │────▶│    Robo     │
 │   Wallet    │     │  (Bridge)   │     │ (Narratives)│     │ (Automate)  │
 └─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
-                          │                    │                    │
-                    ┌─────▼─────┐        ┌─────▼─────┐        ┌─────▼─────┐
-                    │  LI.FI    │        │   Pear    │        │   Salt    │
-                    │  Service  │        │  Service  │        │  Service  │
-                    └───────────┘        └───────────┘        └───────────┘
+       │                   │                   │                   │
+       │              LI.FI API           Pear API            Salt Policies
+       │           (any chain → HL)    (pair execution)     (risk limits)
+       │                   │                   │                   │
+       └───────────────────┴───────────────────┴───────────────────┘
+                                    │
+                              Hyperliquid L1
+                           (perpetual trading)
 ```
 
-1. **Connect** - User connects wallet (any chain supported)
-2. **Onboard** - Bridge assets to Hyperliquid via LI.FI
-3. **Trade** - Select AI-suggested narratives and execute pair trades
-4. **Robo** - Enable automated strategies with policy controls
+1. **Connect** - RainbowKit wallet connection (any EVM chain)
+2. **Onboard** - LI.FI bridges assets to Hyperliquid in one click
+3. **Trade** - Describe a narrative, AI suggests a pair trade, execute via Pear
+4. **Robo** - Enable automated strategies with policy guardrails
 
 ---
 
-## API Routes
-
-### Frontend API (Next.js)
+## API Endpoints
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/pear/narratives` | AI-generated trading narratives |
-| `GET /api/pear/narratives/custom/performance` | Historical performance data |
-| `POST /api/pear/auth/message` | Get EIP-712 message for signing |
-| `POST /api/pear/auth/verify` | Verify signature and authenticate |
-| `GET /api/salt/strategies` | List available strategies |
-| `POST /api/salt/strategies/toggle` | Enable/disable a strategy |
-
-### Performance API
-
-```
-GET /api/pear/narratives/custom/performance?long=ETH&short=BTC&days=180
-GET /api/pear/narratives/custom/performance?long=SOL&days=90  # Long-only
-GET /api/pear/narratives/custom/performance?short=DOGE&days=30 # Short-only
-```
+| `POST /api/pear/narratives/suggest` | AI generates pair trade from thesis |
+| `POST /api/pear/bets/execute` | Execute pair trade via Pear |
+| `GET /api/pear/narratives/custom/performance` | Historical backtest data |
+| `GET /api/lifi/onboard/options` | Get bridge route options |
+| `POST /api/salt/accounts/[id]/pair-trade` | Execute with policy enforcement |
+| `GET /api/salt/strategies` | List automated strategies |
 
 ---
 
-## Bounty Alignment
+## What's Implemented
 
-This project targets three Hyperstack bounties:
-
-### [PEAR] Build on Pear Execution API
-- Trade narratives, not just tokens
-- Pair and basket trade execution
-- Betting-style UX (stake, direction, risk)
-
-### [LIFI] One-Click Onboarding to Hyperliquid
-- Bridge from any chain via LI.FI routing
-- Quote, ETA, steps, and progress tracking
-- Reusable deposit component
-
-### [SALT] Programmable Capital & Robo Managers
-- Policy-controlled accounts
-- Automated strategy execution
-- Risk-aware portfolio management
-
----
-
-## Project Structure
-
-```
-apps/frontend/
-├── src/
-│   ├── app/
-│   │   ├── page.tsx           # Main trading dashboard
-│   │   ├── onboard/           # Cross-chain bridging
-│   │   ├── robo/              # Strategy management
-│   │   └── api/               # API routes
-│   ├── components/
-│   │   ├── PerformanceChart   # Historical backtesting
-│   │   ├── DepositModal       # LI.FI bridge UI
-│   │   ├── RiskManagementTab  # Policy editor
-│   │   └── SidePanels         # AI suggestions
-│   ├── hooks/
-│   │   └── usePearAuth        # Pear Protocol auth
-│   └── lib/
-│       ├── api.ts             # API client
-│       └── api-server/        # Server-side clients
-
-services/
-├── pear-service/              # Trade execution
-├── lifi-service/              # Cross-chain bridging
-└── salt-service/              # Policy & automation
-```
-
----
-
-## Scripts
-
-```bash
-# Development
-pnpm dev              # Start frontend with strategy loop
-pnpm dev:next         # Start frontend only
-
-# Strategies
-pnpm strategies       # Run strategies once
-pnpm strategies:loop  # Run strategies in loop (60s interval)
-pnpm strategies:fast  # Run strategies in loop (30s interval)
-
-# Build & Lint
-pnpm build            # Build all packages
-pnpm lint             # Lint all packages
-pnpm typecheck        # Type check all packages
-pnpm clean            # Clean all build artifacts
-```
+| Component | Files | Description |
+|-----------|-------|-------------|
+| **Pear Auth** | `usePearAuth.ts`, `pearClient.ts` | EIP-712 signing, JWT tokens, agent wallet setup |
+| **Trade Execution** | `betBuilder.ts`, `execute/route.ts` | Order construction, dry-run validation, atomic execution |
+| **AI Narratives** | `claudeClient.ts`, `narrativeService.ts` | Claude Sonnet generates validated trade suggestions |
+| **Backtesting** | `coingeckoClient.ts`, `hyperliquidClient.ts` | 180-day historical data, pair performance, max drawdown |
+| **Bridging** | `lifiClient.ts`, `onboard/` routes | Multi-chain quotes, route optimization, progress tracking |
+| **Policy Engine** | `policyEnforcer.ts` | Leverage, daily notional, allowed pairs validation |
+| **Strategies** | `takeProfit.ts`, `trailingStop.ts`, `vwapExit.ts`, `adxMomentum.ts` | Automated exit strategies with 60s loop |
 
 ---
 
@@ -281,7 +217,8 @@ Built for Hyperstack Hackathon 2025
 
 ## Links
 
-- [Pear Protocol](https://pearprotocol.io)
-- [LI.FI](https://li.fi)
-- [Salt](https://salt.xyz)
-- [Hyperliquid](https://hyperliquid.xyz)
+- [Pear Protocol](https://pearprotocol.io) - Pair trade execution
+- [LI.FI](https://li.fi) - Cross-chain bridging
+- [Salt](https://salt.xyz) - Policy-controlled accounts
+- [Hyperliquid](https://hyperliquid.xyz) - Perpetual DEX
+- [Anthropic](https://anthropic.com) - Claude AI

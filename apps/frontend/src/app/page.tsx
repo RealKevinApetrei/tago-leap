@@ -50,7 +50,7 @@ export default function Home() {
           transition={{ duration: 0.6 }}
           className={`text-center transition-opacity duration-500 ${mounted ? 'opacity-100' : 'opacity-0'}`}
         >
-          <div className="flex items-center justify-center gap-3 mb-3">
+          <div className="flex items-center justify-center gap-3 mb-2">
             {/* Logo Mark */}
             <div className="relative w-12 h-12">
               <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-tago-yellow-400/30 to-tago-yellow-500/10" />
@@ -80,7 +80,7 @@ export default function Home() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.3 }}
-          className="mt-8 w-full max-w-2xl"
+          className="mt-6 w-full max-w-2xl"
         >
           <div className="grid grid-cols-3 gap-2">
             {FEATURES.map((feature, i) => (
@@ -106,7 +106,7 @@ export default function Home() {
         </motion.div>
 
         {/* Setup Bar or CTA Button */}
-        <div className="mt-8">
+        <div className="mt-6">
           <AnimatePresence mode="wait">
             {showSetupBar ? (
               <motion.div

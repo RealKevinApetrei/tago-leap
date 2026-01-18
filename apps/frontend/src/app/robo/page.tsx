@@ -53,6 +53,7 @@ export default function RoboPage() {
     isCreating: agentWalletCreating,
     isApproving: agentWalletApproving,
     needsApproval: agentWalletNeedsApproval,
+    existingAgent,
     error: agentWalletError,
     createAgentWallet,
     approveAgentWallet,
@@ -1082,12 +1083,10 @@ export default function RoboPage() {
       userStrategies={userStrategies}
       recentRuns={recentRuns}
       isTogglingStrategy={isToggling}
-      onToggleStrategy={async (strategyId, active) => {
-        const strategyName = availableStrategies.find(s => s.id === strategyId)?.name || 'Strategy';
-        const result = await toggleStrategy(strategyId, active);
-        if (result.success) {
-          showToast('success', `${strategyName} ${active ? 'enabled' : 'disabled'}`);
-        } else {
+      onToggleStrategy={async (strategyId, active, params) => {
+        const result = await toggleStrategy(strategyId, active, params);
+        if (!result.success) {
+          // Only show toast on error
           showToast('error', result.error || 'Failed to update strategy');
         }
       }}

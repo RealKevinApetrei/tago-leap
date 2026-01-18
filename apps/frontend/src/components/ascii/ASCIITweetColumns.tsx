@@ -62,7 +62,7 @@ function TweetColumn({ tweets, direction, side }: TweetColumnProps) {
 
   return (
     <div
-      className={`fixed top-0 bottom-0 ${side === 'left' ? 'left-2' : 'right-2'} w-[160px] overflow-hidden pointer-events-none z-0 hidden xl:block`}
+      className={`fixed top-0 bottom-12 ${side === 'left' ? 'left-2' : 'right-2'} w-[160px] overflow-hidden pointer-events-none z-0 hidden xl:block`}
     >
       <div className="absolute inset-0 flex flex-col items-center py-8">
         <div
