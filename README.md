@@ -97,24 +97,44 @@ cp .env.example .env
 
 ### Environment Variables
 
+Create a `.env` file in the root directory:
+
 ```bash
 # Supabase
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
-# LI.FI
-LIFI_API_KEY=
-LIFI_INTEGRATOR=tago-leap
+# Service Ports
+PEAR_SERVICE_PORT=3001
+LIFI_SERVICE_PORT=3002
+SALT_SERVICE_PORT=3003
 
 # Pear Protocol
 PEAR_API_BASE_URL=https://hl-v2.pearprotocol.io
 
-# Anthropic (AI suggestions)
-ANTHROPIC_API_KEY=
+# LI.FI
+LIFI_API_BASE_URL=https://li.quest/v1
+LIFI_INTEGRATOR=tago-leap
+LIFI_API_KEY=your-lifi-api-key
 
-# WalletConnect
-NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=
+# Anthropic (AI suggestions)
+ANTHROPIC_API_KEY=your-anthropic-api-key
+
+# Hyperliquid
+HYPERLIQUID_API_BASE_URL=https://api.hyperliquid.xyz
+HYPEREVM_CHAIN_ID=999
+
+# Salt Service
+PEAR_SERVICE_URL=http://localhost:3001
+
+# Frontend (public)
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+NEXT_PUBLIC_PEAR_SERVICE_URL=http://localhost:3001
+NEXT_PUBLIC_LIFI_SERVICE_URL=http://localhost:3002
+NEXT_PUBLIC_SALT_SERVICE_URL=http://localhost:3003
+NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your-walletconnect-project-id
 ```
 
 ### Running Locally
