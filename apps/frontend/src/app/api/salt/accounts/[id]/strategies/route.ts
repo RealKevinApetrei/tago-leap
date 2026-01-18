@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSaltAccountById, createSaltStrategy } from '@/lib/api-server/domain/saltRepo';
+import { getSaltAccountById, upsertSaltStrategy } from '@/lib/api-server/domain/saltRepo';
 import { getStrategyById } from '@/lib/api-server/domain/strategyTypes';
 import { getSupabaseAdmin } from '@/lib/api-server/supabase';
 
@@ -30,7 +30,7 @@ export async function POST(
       );
     }
 
-    // Verify strategy exists
+    // Verify strategy type exists
     const strategyDef = getStrategyById(strategyId);
     if (!strategyDef) {
       return NextResponse.json(
@@ -39,24 +39,26 @@ export async function POST(
       );
     }
 
-    // Merge provided params with defaults
-    const mergedParams = {
+    // Merge provided params with defaults (only if params provided)
+    const mergedParams = strategyParams ? {
       ...strategyDef.defaultParams,
       ...strategyParams,
-    };
+    } : strategyDef.defaultParams;
 
-    // Create strategy
-    const strategy = await createSaltStrategy(supabase, id, {
+    // Upsert strategy (create or update)
+    const strategy = await upsertSaltStrategy(supabase, id, {
       strategyId,
       params: mergedParams,
       active: active ?? false,
     });
 
+    console.log(`[Strategies] ${strategy.id} set to active=${active} for account ${id}`);
+
     return NextResponse.json({ success: true, data: strategy });
   } catch (err: any) {
-    console.error('Failed to create strategy:', err);
+    console.error('Failed to upsert strategy:', err);
     return NextResponse.json(
-      { success: false, error: { code: 'INTERNAL_ERROR', message: err?.message || 'Failed to create strategy' } },
+      { success: false, error: { code: 'INTERNAL_ERROR', message: err?.message || 'Failed to update strategy' } },
       { status: 500 }
     );
   }

@@ -192,6 +192,68 @@ export async function createSaltStrategy(
   return data;
 }
 
+export async function upsertSaltStrategy(
+  supabase: SupabaseAdminClient,
+  saltAccountId: string,
+  strategy: {
+    strategyId: string;
+    params?: Record<string, unknown>;
+    active: boolean;
+  }
+): Promise<SaltStrategy> {
+  // Check if strategy already exists for this account
+  const { data: existing } = await supabase
+    .from('salt_strategies')
+    .select()
+    .eq('salt_account_id', saltAccountId)
+    .eq('strategy_id', strategy.strategyId)
+    .single();
+
+  if (existing) {
+    // Update existing strategy
+    const updateData: Record<string, unknown> = {
+      active: strategy.active,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Only update params if provided
+    if (strategy.params) {
+      updateData.params = strategy.params as unknown as Json;
+    }
+
+    const { data, error } = await supabase
+      .from('salt_strategies')
+      .update(updateData)
+      .eq('id', existing.id)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to update salt strategy: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  // Create new strategy
+  const { data, error } = await supabase
+    .from('salt_strategies')
+    .insert({
+      salt_account_id: saltAccountId,
+      strategy_id: strategy.strategyId,
+      params: (strategy.params || {}) as unknown as Json,
+      active: strategy.active,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to create salt strategy: ${error.message}`);
+  }
+
+  return data;
+}
+
 export async function getStrategiesByAccountId(
   supabase: SupabaseAdminClient,
   saltAccountId: string
@@ -277,14 +339,19 @@ export async function getActiveSaltAccounts(
   }));
 }
 
+export interface StrategyRunWithDefinition extends StrategyRun {
+  strategy_definition_id: string;
+}
+
 export async function getStrategyRunsByAccountId(
   supabase: SupabaseAdminClient,
   saltAccountId: string,
   limit: number = 20
-): Promise<StrategyRun[]> {
+): Promise<StrategyRunWithDefinition[]> {
+  // Fetch strategies with both UUID (id) and definition ID (strategy_id)
   const { data: strategies, error: strategiesError } = await supabase
     .from('salt_strategies')
-    .select('id')
+    .select('id, strategy_id')
     .eq('salt_account_id', saltAccountId);
 
   if (strategiesError) {
@@ -295,6 +362,10 @@ export async function getStrategyRunsByAccountId(
     return [];
   }
 
+  // Map UUID -> definition ID (e.g., "550e8400-..." -> "take-profit")
+  const strategyDefMap = new Map<string, string>(
+    strategies.map(s => [s.id, s.strategy_id])
+  );
   const strategyIds = strategies.map(s => s.id);
 
   const { data, error } = await supabase
@@ -308,5 +379,9 @@ export async function getStrategyRunsByAccountId(
     throw new Error(`Failed to get strategy runs: ${error.message}`);
   }
 
-  return data || [];
+  // Enrich runs with the strategy definition ID
+  return (data || []).map(run => ({
+    ...run,
+    strategy_definition_id: strategyDefMap.get(run.strategy_id) || 'unknown',
+  }));
 }

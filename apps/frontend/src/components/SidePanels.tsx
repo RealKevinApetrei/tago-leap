@@ -1,9 +1,60 @@
 'use client';
 
 import { createContext, useContext, useState, ReactNode } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/Button';
 
 export type PanelType = 'portfolio' | 'risk' | null;
+
+// Panel animation variants
+const backdropVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { duration: 0.3 } },
+  exit: { opacity: 0, transition: { duration: 0.2 } },
+} as const;
+
+const leftPanelVariants = {
+  hidden: { x: '-100%', opacity: 0.8 },
+  visible: {
+    x: 0,
+    opacity: 1,
+    transition: {
+      type: 'spring' as const,
+      stiffness: 300,
+      damping: 30,
+      mass: 0.8,
+    },
+  },
+  exit: {
+    x: '-100%',
+    opacity: 0.8,
+    transition: { duration: 0.25, ease: [0.4, 0, 0.2, 1] as const },
+  },
+} as const;
+
+const rightPanelVariants = {
+  hidden: { x: '100%', opacity: 0.8 },
+  visible: {
+    x: 0,
+    opacity: 1,
+    transition: {
+      type: 'spring' as const,
+      stiffness: 300,
+      damping: 30,
+      mass: 0.8,
+    },
+  },
+  exit: {
+    x: '100%',
+    opacity: 0.8,
+    transition: { duration: 0.25, ease: [0.4, 0, 0.2, 1] as const },
+  },
+} as const;
+
+const tabHoverVariants = {
+  rest: { scale: 1, width: 40 },
+  hover: { scale: 1.05, width: 48 },
+} as const;
 
 interface SidePanelsContextType {
   activePanel: PanelType;
@@ -60,84 +111,105 @@ export function SidePanelsProvider({
       {children}
 
       {/* Backdrop */}
-      <div
-        className={`
-          fixed inset-0 bg-black/60 backdrop-blur-sm z-40
-          transition-opacity duration-300
-          ${activePanel ? 'opacity-100' : 'opacity-0 pointer-events-none'}
-        `}
-        onClick={closePanel}
-      />
+      <AnimatePresence>
+        {activePanel && (
+          <motion.div
+            className="fixed inset-0 bg-black/60 z-40"
+            variants={backdropVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            onClick={closePanel}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Left Edge Tab - Portfolio */}
-      <button
+      <motion.button
         onClick={() => togglePanel('portfolio')}
         className={`
           fixed left-0 top-1/2 -translate-y-1/2 z-50
           flex items-center justify-center
-          w-10 h-32
+          h-32
           bg-gradient-to-r from-white/[0.08] to-white/[0.04]
           border-y border-r border-white/[0.1]
           rounded-r-xl
-          transition-all duration-300
-          hover:from-white/[0.12] hover:to-white/[0.08]
-          hover:w-12
           ${activePanel === 'portfolio' ? 'bg-tago-yellow-400/20 border-tago-yellow-400/30' : ''}
         `}
+        initial="rest"
+        whileHover="hover"
+        whileTap={{ scale: 0.95 }}
+        variants={tabHoverVariants}
+        transition={{ type: 'spring', stiffness: 400, damping: 25 }}
       >
         <div className="flex flex-col items-center gap-2">
-          <svg className={`w-5 h-5 transition-colors ${activePanel === 'portfolio' ? 'text-tago-yellow-400' : 'text-white/50'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <motion.svg
+            className={`w-5 h-5 ${activePanel === 'portfolio' ? 'text-tago-yellow-400' : 'text-white/50'}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            animate={{ rotate: activePanel === 'portfolio' ? 360 : 0 }}
+            transition={{ duration: 0.5 }}
+          >
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12m18 0v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 9m18 0V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v3" />
-          </svg>
-          <span className={`text-[10px] font-medium tracking-wider uppercase writing-mode-vertical transition-colors ${activePanel === 'portfolio' ? 'text-tago-yellow-400' : 'text-white/40'}`}
+          </motion.svg>
+          <span className={`text-[10px] font-medium tracking-wider uppercase ${activePanel === 'portfolio' ? 'text-tago-yellow-400' : 'text-white/40'}`}
             style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}
           >
             Portfolio
           </span>
         </div>
-      </button>
+      </motion.button>
 
       {/* Right Edge Tab - Risk */}
-      <button
+      <motion.button
         onClick={() => togglePanel('risk')}
         className={`
           fixed right-0 top-1/2 -translate-y-1/2 z-50
           flex items-center justify-center
-          w-10 h-32
+          h-32
           bg-gradient-to-l from-white/[0.08] to-white/[0.04]
           border-y border-l border-white/[0.1]
           rounded-l-xl
-          transition-all duration-300
-          hover:from-white/[0.12] hover:to-white/[0.08]
-          hover:w-12
           ${activePanel === 'risk' ? 'bg-amber-500/20 border-amber-500/30' : ''}
         `}
+        initial="rest"
+        whileHover="hover"
+        whileTap={{ scale: 0.95 }}
+        variants={tabHoverVariants}
+        transition={{ type: 'spring', stiffness: 400, damping: 25 }}
       >
         <div className="flex flex-col items-center gap-2">
-          <svg className={`w-5 h-5 transition-colors ${activePanel === 'risk' ? 'text-amber-400' : 'text-white/50'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <motion.svg
+            className={`w-5 h-5 ${activePanel === 'risk' ? 'text-amber-400' : 'text-white/50'}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            animate={{ rotate: activePanel === 'risk' ? 360 : 0 }}
+            transition={{ duration: 0.5 }}
+          >
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-          </svg>
-          <span className={`text-[10px] font-medium tracking-wider uppercase transition-colors ${activePanel === 'risk' ? 'text-amber-400' : 'text-white/40'}`}
+          </motion.svg>
+          <span className={`text-[10px] font-medium tracking-wider uppercase ${activePanel === 'risk' ? 'text-amber-400' : 'text-white/40'}`}
             style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}
           >
             Risk
           </span>
         </div>
-      </button>
+      </motion.button>
 
       {/* Portfolio Panel - Slides from Left */}
-      <div
-        className={`
-          fixed top-16 left-0 bottom-0 z-50
-          w-[calc(100%-3rem)] max-w-6xl
-          bg-gradient-to-br from-black/95 via-black/90 to-black/95
-          border-r border-white/[0.08]
-          shadow-2xl shadow-black/50
-          transition-transform duration-500 ease-out
-          overflow-y-auto
-          ${activePanel === 'portfolio' ? 'translate-x-0' : '-translate-x-full'}
-        `}
-      >
+      <AnimatePresence>
+        {activePanel === 'portfolio' && (
+          <motion.div
+            className="fixed top-16 left-0 bottom-0 z-50 w-[calc(100%-3rem)] max-w-6xl bg-gradient-to-br from-black/95 via-black/90 to-black/95 border-r border-white/[0.08] shadow-2xl shadow-black/50 overflow-y-auto"
+            variants={leftPanelVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+          >
         {/* Panel Header */}
         <div className="sticky top-0 z-10 flex items-center justify-between p-6 bg-black/80 backdrop-blur-md border-b border-white/[0.05]">
           <div className="flex items-center gap-3">
@@ -186,21 +258,20 @@ export function SidePanelsProvider({
           )}
           {portfolioContent}
         </div>
-      </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Risk Panel - Slides from Right */}
-      <div
-        className={`
-          fixed top-16 right-0 bottom-0 z-50
-          w-[calc(100%-3rem)] max-w-6xl
-          bg-gradient-to-bl from-black/95 via-black/90 to-black/95
-          border-l border-white/[0.08]
-          shadow-2xl shadow-black/50
-          transition-transform duration-500 ease-out
-          flex flex-col
-          ${activePanel === 'risk' ? 'translate-x-0' : 'translate-x-full'}
-        `}
-      >
+      <AnimatePresence>
+        {activePanel === 'risk' && (
+          <motion.div
+            className="fixed top-16 right-0 bottom-0 z-50 w-[calc(100%-3rem)] max-w-6xl bg-gradient-to-bl from-black/95 via-black/90 to-black/95 border-l border-white/[0.08] shadow-2xl shadow-black/50 flex flex-col"
+            variants={rightPanelVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+          >
         {/* Panel Header */}
         <div className="flex-shrink-0 flex items-center justify-between p-4 bg-black/80 backdrop-blur-md border-b border-white/[0.05]">
           <div className="flex items-center gap-3">
@@ -249,7 +320,9 @@ export function SidePanelsProvider({
           )}
           {riskContent}
         </div>
-      </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </SidePanelsContext.Provider>
   );
 }

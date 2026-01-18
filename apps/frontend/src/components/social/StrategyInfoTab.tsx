@@ -11,10 +11,28 @@ interface PerformanceDataPoint {
   performance: number;
 }
 
+interface PairStatistics {
+  correlation: number;
+  cointegrated: boolean;
+  rollingZScore: number;
+  volatility: number;
+  beta: number;
+  betaWeights: {
+    long: number;
+    short: number;
+  };
+}
+
 interface BacktestData {
   dataPoints: PerformanceDataPoint[];
   totalReturn: number;
   maxDrawdown: number;
+  ratio?: number;          // Current price ratio
+  startRatio?: number;     // Starting price ratio
+  endRatio?: number;       // Ending price ratio
+  longWeights?: number[];  // Weights used for long basket
+  shortWeights?: number[]; // Weights used for short basket
+  statistics?: PairStatistics;
 }
 
 interface StrategyInfoTabProps {
@@ -24,6 +42,8 @@ interface StrategyInfoTabProps {
   accountHealth?: number;
   availableBalance?: number;
   maxLeverage?: number;
+  /** Callback when user clicks "Use Beta Ratio" to adjust weights */
+  onUseBetaRatio?: (longWeight: number, shortWeight: number) => void;
 }
 
 export function StrategyInfoTab({
@@ -33,16 +53,24 @@ export function StrategyInfoTab({
   accountHealth = 100,
   availableBalance = 0,
   maxLeverage = 20,
+  onUseBetaRatio,
 }: StrategyInfoTabProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [backtestData, setBacktestData] = useState<BacktestData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Extract assets from suggestion
-  const longAsset = suggestion?.longAssets?.[0]?.asset;
-  const shortAsset = suggestion?.shortAssets?.[0]?.asset;
-  const hasAssets = !!longAsset || !!shortAsset;
+  // Extract assets from suggestion (with weights for baskets)
+  const longAssets = suggestion?.longAssets?.filter(a => a.weight > 0) || [];
+  const shortAssets = suggestion?.shortAssets?.filter(a => a.weight > 0) || [];
+  const hasAssets = longAssets.length > 0 || shortAssets.length > 0;
+
+  // Create a stable key for the assets to trigger refetch when they change
+  const assetsKey = useMemo(() => {
+    const longKey = longAssets.map(a => `${a.asset}:${a.weight.toFixed(2)}`).join(',');
+    const shortKey = shortAssets.map(a => `${a.asset}:${a.weight.toFixed(2)}`).join(',');
+    return `${longKey}|${shortKey}`;
+  }, [longAssets, shortAssets]);
 
   // Fetch live backtest data when suggestion changes
   useEffect(() => {
@@ -56,12 +84,17 @@ export function StrategyInfoTab({
       setError(null);
 
       try {
-        const params = new URLSearchParams();
-        if (longAsset) params.set('long', longAsset);
-        if (shortAsset) params.set('short', shortAsset);
-        params.set('days', '30'); // 30 day backtest
+        // Use POST for full basket data with weights
+        const response = await fetch('/api/pear/narratives/custom/performance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            longAssets: longAssets.map(a => ({ asset: a.asset, weight: a.weight })),
+            shortAssets: shortAssets.map(a => ({ asset: a.asset, weight: a.weight })),
+            days: 30, // 30 day backtest
+          }),
+        });
 
-        const response = await fetch(`/api/pear/narratives/custom/performance?${params.toString()}`);
         const result = await response.json();
 
         if (!response.ok || !result.success) {
@@ -78,7 +111,7 @@ export function StrategyInfoTab({
     };
 
     fetchBacktest();
-  }, [longAsset, shortAsset, hasAssets]);
+  }, [assetsKey, hasAssets]);
 
   // Calculate metrics from backtest data
   const metrics = useMemo(() => {
@@ -161,11 +194,14 @@ export function StrategyInfoTab({
     return { sparklinePath: path, sparklineFillPath: fillPath, isPositive: positive };
   }, [backtestData]);
 
-  // Get trade description
+  // Get trade description (shows full basket if multiple assets)
   const getTradeDescription = () => {
-    if (longAsset && shortAsset) return `${longAsset} vs ${shortAsset}`;
-    if (longAsset) return `Long ${longAsset}`;
-    if (shortAsset) return `Short ${shortAsset}`;
+    const longStr = longAssets.map(a => a.asset).join('+');
+    const shortStr = shortAssets.map(a => a.asset).join('+');
+
+    if (longStr && shortStr) return `${longStr} vs ${shortStr}`;
+    if (longStr) return `Long ${longStr}`;
+    if (shortStr) return `Short ${shortStr}`;
     return 'No trade selected';
   };
 
@@ -189,7 +225,6 @@ export function StrategyInfoTab({
         {/* Quick stats badges when collapsed */}
         {!isExpanded && hasAssets && backtestData && (
           <div className="flex items-center gap-3 ml-4">
-            <span className="text-xs text-green-400/80">{metrics.winRate.toFixed(0)}% win</span>
             <span className={`text-xs ${backtestData.totalReturn >= 0 ? 'text-green-400/80' : 'text-red-400/80'}`}>
               {backtestData.totalReturn >= 0 ? '+' : ''}{backtestData.totalReturn.toFixed(1)}%
             </span>
@@ -204,7 +239,7 @@ export function StrategyInfoTab({
 
       {/* Expanded Panel */}
       {isExpanded && (
-        <div className="p-4 bg-black/40 border-b border-white/[0.06] animate-in slide-in-from-top-2 duration-200">
+        <div className="p-4 bg-black/40 border-b border-white/[0.06]">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Historical Performance / Backtest */}
             <div className="space-y-3">
@@ -260,13 +295,7 @@ export function StrategyInfoTab({
               </div>
 
               {/* Stats Row */}
-              <div className="grid grid-cols-3 gap-2">
-                <div className="text-center p-2 rounded-lg bg-white/[0.03]">
-                  <p className={`text-lg font-semibold ${metrics.winRate >= 50 ? 'text-green-400' : 'text-red-400'}`}>
-                    {backtestData ? `${metrics.winRate.toFixed(0)}%` : '--'}
-                  </p>
-                  <p className="text-[10px] text-white/40">Win Rate</p>
-                </div>
+              <div className="grid grid-cols-2 gap-2">
                 <div className="text-center p-2 rounded-lg bg-white/[0.03]">
                   <p className={`text-lg font-semibold ${backtestData && backtestData.totalReturn >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     {backtestData ? `${backtestData.totalReturn >= 0 ? '+' : ''}${backtestData.totalReturn.toFixed(1)}%` : '--'}
@@ -353,13 +382,93 @@ export function StrategyInfoTab({
               </div>
             </div>
 
-            {/* Strategy Settings / Current Trade Info */}
+            {/* Pair Statistics / Trade Analysis */}
             <div className="space-y-3">
               <h3 className="text-xs font-medium text-white/50 uppercase tracking-wide">
-                {suggestion ? 'Trade Analysis' : 'Strategy Settings'}
+                {backtestData?.statistics ? 'Pair Statistics' : suggestion ? 'Trade Analysis' : 'Strategy Settings'}
               </h3>
 
-              {suggestion ? (
+              {/* Show pair statistics when available (Agent Pear style) */}
+              {backtestData?.statistics ? (
+                <div className="space-y-2">
+                  {/* Correlation */}
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/[0.03]">
+                    <span className="text-xs text-white/60">Correlation</span>
+                    <span className={`text-sm font-semibold ${
+                      backtestData.statistics.correlation >= 0.7 ? 'text-green-400' :
+                      backtestData.statistics.correlation >= 0.3 ? 'text-yellow-400' : 'text-red-400'
+                    }`}>
+                      {backtestData.statistics.correlation.toFixed(2)}
+                    </span>
+                  </div>
+
+                  {/* Cointegrated */}
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/[0.03]">
+                    <span className="text-xs text-white/60">Cointegrated</span>
+                    <span className={`text-sm font-semibold ${
+                      backtestData.statistics.cointegrated ? 'text-green-400' : 'text-white/50'
+                    }`}>
+                      {backtestData.statistics.cointegrated ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+
+                  {/* Rolling Z-Score */}
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/[0.03]">
+                    <span className="text-xs text-white/60">Roll ZScore</span>
+                    <span className={`text-sm font-semibold ${
+                      Math.abs(backtestData.statistics.rollingZScore) >= 2 ? 'text-red-400' :
+                      Math.abs(backtestData.statistics.rollingZScore) >= 1 ? 'text-yellow-400' : 'text-green-400'
+                    }`}>
+                      {backtestData.statistics.rollingZScore.toFixed(2)}
+                    </span>
+                  </div>
+
+                  {/* Volatility */}
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/[0.03]">
+                    <span className="text-xs text-white/60">Volatility</span>
+                    <span className={`text-sm font-semibold ${
+                      backtestData.statistics.volatility >= 80 ? 'text-red-400' :
+                      backtestData.statistics.volatility >= 40 ? 'text-yellow-400' : 'text-green-400'
+                    }`}>
+                      {backtestData.statistics.volatility}%
+                    </span>
+                  </div>
+
+                  {/* Beta with asset breakdown */}
+                  <div className="p-2 rounded-lg bg-white/[0.03] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-white/60">Beta</span>
+                      <span className="text-sm font-semibold text-[#E8FF00]">
+                        {backtestData.statistics.beta.toFixed(3)}
+                      </span>
+                    </div>
+                    {/* Beta weights breakdown */}
+                    <div className="flex items-center gap-2 text-[10px]">
+                      <span className="text-green-400">
+                        {longAssets[0]?.asset}: {(backtestData.statistics.betaWeights.long * 100).toFixed(1)}%
+                      </span>
+                      <span className="text-white/30">|</span>
+                      <span className="text-red-400">
+                        {shortAssets[0]?.asset}: {(backtestData.statistics.betaWeights.short * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Use Beta Ratio button */}
+                  {onUseBetaRatio && (
+                    <button
+                      onClick={() => onUseBetaRatio(
+                        backtestData.statistics!.betaWeights.long,
+                        backtestData.statistics!.betaWeights.short
+                      )}
+                      className="w-full py-2 px-3 text-xs font-medium rounded-lg bg-[#E8FF00]/10 text-[#E8FF00] border border-[#E8FF00]/30 hover:bg-[#E8FF00]/20 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <ScaleIcon className="w-3.5 h-3.5" />
+                      Use Beta Ratio
+                    </button>
+                  )}
+                </div>
+              ) : suggestion ? (
                 <div className="space-y-2">
                   {/* Current trade reasoning */}
                   <div className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.06]">
@@ -448,6 +557,14 @@ function ChevronIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+function ScaleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
     </svg>
   );
 }

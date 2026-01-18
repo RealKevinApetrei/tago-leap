@@ -23,7 +23,7 @@ import { usePolicyValidation } from '@/hooks/usePolicyValidation';
 import { useDepositModal } from '@/components/DepositModal';
 import { SidePanelsProvider, PanelType } from '@/components/SidePanels';
 
-type PortfolioView = 'positions' | 'history';
+type PortfolioView = 'positions' | 'history' | 'pear';
 // Trade mode is now auto-detected: pair (1v1) or basket (multiple assets per side)
 
 export default function RoboPage() {
@@ -737,41 +737,6 @@ export default function RoboPage() {
             )}
           </div>
 
-          {/* Recent Pear Executions */}
-          <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
-            <h3 className="text-xs text-white/50 font-medium uppercase tracking-wide mb-3">Pear Executions</h3>
-            {trades.length === 0 ? (
-              <p className="text-xs text-white/30 text-center py-2">No executions yet</p>
-            ) : (
-              <div className="space-y-2">
-                {trades.slice(0, 4).map((trade) => {
-                  const payload = trade.pear_order_payload;
-                  const longAssets = payload?.longAssets || [];
-                  const shortAssets = payload?.shortAssets || [];
-                  const tradeLabel = longAssets.length > 0 && shortAssets.length > 0
-                    ? `${longAssets.map(a => a.asset).join('+')} vs ${shortAssets.map(a => a.asset).join('+')}`
-                    : longAssets.length > 0
-                    ? `Long ${longAssets.map(a => a.asset).join('+')}`
-                    : `Short ${shortAssets.map(a => a.asset).join('+')}`;
-
-                  return (
-                    <div key={trade.id} className="flex items-center justify-between py-1.5 border-b border-white/[0.05] last:border-0">
-                      <span className="text-xs text-white/70 truncate">{tradeLabel}</span>
-                      <Badge variant={trade.status === 'completed' ? 'success' : trade.status === 'pending' ? 'info' : 'error'} className="text-[9px]">
-                        {trade.status === 'completed' ? 'OK' : trade.status}
-                      </Badge>
-                    </div>
-                  );
-                })}
-                {trades.length > 4 && (
-                  <button onClick={() => setPortfolioView('history')} className="text-[10px] text-white/40 hover:text-white/60 w-full text-center pt-1">
-                    +{trades.length - 4} more
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
           <Button variant="ghost" fullWidth size="sm" onClick={() => { refreshPositions(); refreshBalance(); }}>
             Refresh Data
           </Button>
@@ -782,7 +747,7 @@ export default function RoboPage() {
           <div className="flex gap-1 bg-white/[0.03] rounded-lg p-1">
             <button
               onClick={() => setPortfolioView('positions')}
-              className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+              className={`flex-1 px-2 py-2 rounded-md text-xs font-medium transition-all ${
                 portfolioView === 'positions'
                   ? 'bg-tago-yellow-400 text-black'
                   : 'text-white/60 hover:text-white hover:bg-white/[0.05]'
@@ -792,13 +757,23 @@ export default function RoboPage() {
             </button>
             <button
               onClick={() => setPortfolioView('history')}
-              className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+              className={`flex-1 px-2 py-2 rounded-md text-xs font-medium transition-all ${
                 portfolioView === 'history'
                   ? 'bg-tago-yellow-400 text-black'
                   : 'text-white/60 hover:text-white hover:bg-white/[0.05]'
               }`}
             >
               History
+            </button>
+            <button
+              onClick={() => setPortfolioView('pear')}
+              className={`flex-1 px-2 py-2 rounded-md text-xs font-medium transition-all ${
+                portfolioView === 'pear'
+                  ? 'bg-tago-yellow-400 text-black'
+                  : 'text-white/60 hover:text-white hover:bg-white/[0.05]'
+              }`}
+            >
+              Pear ({trades.length})
             </button>
           </div>
 
@@ -979,6 +954,82 @@ export default function RoboPage() {
               )}
 
               {/* Refresh button */}
+              <button
+                onClick={refreshTrades}
+                className="w-full py-2 text-xs text-white/40 hover:text-white/60 hover:bg-white/[0.02] rounded-lg transition-colors flex items-center justify-center gap-1.5"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+                Refresh
+              </button>
+            </div>
+          )}
+
+          {/* Pear Executions Tab */}
+          {portfolioView === 'pear' && (
+            <div className="space-y-3">
+              {trades.length === 0 ? (
+                <div className="text-center py-12 bg-white/[0.02] rounded-xl border border-white/[0.05]">
+                  <svg className="w-10 h-10 mx-auto text-white/10 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  <p className="text-white/50 font-light text-sm">No Pear executions yet</p>
+                  <p className="text-xs text-white/30 mt-1">Trades executed via Pear will appear here</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                  {trades.map((trade) => {
+                    const payload = trade.pear_order_payload;
+                    const longAssets = payload?.longAssets || [];
+                    const shortAssets = payload?.shortAssets || [];
+                    const leverage = payload?.leverage || 1;
+                    const date = new Date(trade.created_at);
+                    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+                    const tradeLabel = longAssets.length > 0 && shortAssets.length > 0
+                      ? `${longAssets.map(a => a.asset).join('+')} vs ${shortAssets.map(a => a.asset).join('+')}`
+                      : longAssets.length > 0
+                      ? `Long ${longAssets.map(a => a.asset).join('+')}`
+                      : `Short ${shortAssets.map(a => a.asset).join('+')}`;
+
+                    return (
+                      <div key={trade.id} className="p-3 bg-white/[0.02] rounded-xl border border-white/[0.06]">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm text-white font-medium">{tradeLabel}</span>
+                          <Badge variant={trade.status === 'completed' ? 'success' : trade.status === 'pending' ? 'info' : 'error'}>
+                            {trade.status === 'completed' ? 'Filled' : trade.status}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+                          {longAssets.map((a) => (
+                            <span key={`long-${a.asset}`} className="text-[10px] text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded">
+                              {a.asset}
+                            </span>
+                          ))}
+                          {longAssets.length > 0 && shortAssets.length > 0 && (
+                            <span className="text-white/20 text-[10px]">vs</span>
+                          )}
+                          {shortAssets.map((a) => (
+                            <span key={`short-${a.asset}`} className="text-[10px] text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded">
+                              {a.asset}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-white/40">
+                          <div className="flex items-center gap-2">
+                            <span>{leverage}x</span>
+                            <span>${Number(trade.stake_usd).toFixed(0)}</span>
+                          </div>
+                          <span>{dateStr} {timeStr}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               <button
                 onClick={refreshTrades}
                 className="w-full py-2 text-xs text-white/40 hover:text-white/60 hover:bg-white/[0.02] rounded-lg transition-colors flex items-center justify-center gap-1.5"

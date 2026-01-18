@@ -3,12 +3,16 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3000",
+    "dev": "next dev --port 3000 & npx tsx scripts/run-strategies.ts --loop --interval 30",
+    "dev:next": "next dev --port 3000",
     "build": "pnpm run build:shared && next build",
     "build:shared": "cd ../../packages/shared && pnpm run build && ls -la dist/types/",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "strategies": "npx tsx scripts/run-strategies.ts",
+    "strategies:loop": "npx tsx scripts/run-strategies.ts --loop",
+    "strategies:fast": "npx tsx scripts/run-strategies.ts --loop --interval 30"
   },
   "dependencies": {
     "@lifi/sdk": "^3.15.3",
@@ -38,6 +42,7 @@
     "dotenv": "^17.2.3",
     "postcss": "^8.4.0",
     "tailwindcss": "^3.4.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.0"
   }
 }

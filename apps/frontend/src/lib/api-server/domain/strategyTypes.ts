@@ -8,32 +8,43 @@ export interface StrategyDefinition {
 
 export const strategies: StrategyDefinition[] = [
   {
-    id: 'momentum',
-    name: 'Momentum',
-    description: 'Trade based on price momentum signals',
-    riskLevel: 'standard',
-    defaultParams: {
-      lookbackPeriod: 14,
-      threshold: 0.02,
-    },
-  },
-  {
-    id: 'mean-reversion',
-    name: 'Mean Reversion',
-    description: 'Trade reversals when price deviates from mean',
+    id: 'take-profit',
+    name: 'Take Profit',
+    description: 'Auto-close positions at fixed profit target',
     riskLevel: 'conservative',
     defaultParams: {
-      lookbackPeriod: 20,
-      stdDevMultiplier: 2,
+      takeProfitPct: 5,      // Close at 5% profit
+      stopLossPct: 10,       // Optional stop loss at -10%
     },
   },
   {
-    id: 'narrative-follow',
-    name: 'Narrative AI',
-    description: 'Follow trending market narratives with AI',
-    riskLevel: 'degen',
+    id: 'trailing-stop',
+    name: 'Trailing Stop',
+    description: 'Dynamic stop that follows price, locks in gains',
+    riskLevel: 'conservative',
     defaultParams: {
-      riskProfile: 'standard',
+      trailPct: 3,           // Trail 3% below peak
+      activationPct: 2,      // Activate after 2% profit
+    },
+  },
+  {
+    id: 'vwap-exit',
+    name: 'VWAP Exit',
+    description: 'Exit when price crosses VWAP (mean reversion)',
+    riskLevel: 'standard',
+    defaultParams: {
+      exitOnCross: 'below',  // Exit longs when price crosses below VWAP
+      minProfitPct: 1,       // Minimum profit before VWAP exit triggers
+    },
+  },
+  {
+    id: 'adx-momentum',
+    name: 'ADX Momentum',
+    description: 'Exit when trend strength weakens (ADX drops)',
+    riskLevel: 'standard',
+    defaultParams: {
+      adxThreshold: 25,      // Exit when ADX falls below 25
+      minProfitPct: 2,       // Minimum profit before ADX exit triggers
     },
   },
 ];

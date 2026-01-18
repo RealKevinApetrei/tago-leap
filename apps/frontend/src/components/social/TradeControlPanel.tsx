@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import type { NarrativeSuggestion } from '@/lib/api';
@@ -57,8 +57,47 @@ export function TradeControlPanel({
   const stake = parseFloat(stakeUsd) || 0;
   const notional = stake * leverage;
   const hasInsufficientBalance = stake > availableBalance;
+
+  // Calculate number of positions and minimum required notional
+  const numLongPositions = suggestion?.longAssets.filter(a => a.weight > 0).length || 0;
+  const numShortPositions = suggestion?.shortAssets.filter(a => a.weight > 0).length || 0;
+  const totalPositions = numLongPositions + numShortPositions;
+  const minNotionalPerPosition = 10; // Hyperliquid minimum
+  const minRequiredNotional = totalPositions * minNotionalPerPosition;
+
+  // Check if each position gets at least $10
+  const notionalPerPosition = totalPositions > 0 ? notional / totalPositions : 0;
+  const isMinNotionalPerPositionMet = totalPositions === 0 || notionalPerPosition >= minNotionalPerPosition;
+
+  // Legacy check for total notional (at least $10 total)
   const isMinNotionalMet = notional >= 10;
-  const canExecute = suggestion && !hasInsufficientBalance && isMinNotionalMet && !isExecuting && isSetupComplete;
+
+  // Determine the blocking reason
+  const getBlockReason = (): { blocked: boolean; message: string } | null => {
+    if (!suggestion) return null;
+    if (hasInsufficientBalance) {
+      return {
+        blocked: true,
+        message: `Insufficient balance. You have $${availableBalance.toFixed(2)} available but need $${stake.toFixed(2)}`
+      };
+    }
+    if (!isMinNotionalPerPositionMet) {
+      return {
+        blocked: true,
+        message: `Min $${minRequiredNotional} notional needed (${totalPositions} positions × $${minNotionalPerPosition} each). Current: $${notional.toFixed(0)}`
+      };
+    }
+    if (!isMinNotionalMet) {
+      return {
+        blocked: true,
+        message: `Minimum notional is $10. Current: $${notional.toFixed(0)}`
+      };
+    }
+    return null;
+  };
+
+  const blockReason = getBlockReason();
+  const canExecute = suggestion && !blockReason && !isExecuting && isSetupComplete;
 
   // Risk level calculation
   const dailyUsagePercent = maxDailyNotional > 0 ? (todayNotional / maxDailyNotional) * 100 : 0;
@@ -173,53 +212,63 @@ export function TradeControlPanel({
         </div>
 
         {/* Connect to Trade or Execute Button */}
-        {!isSetupComplete ? (
-          <Button
-            onClick={onConnectToTrade}
-            disabled={isRunningSetup}
-            className="h-12 px-8 text-base font-semibold rounded-xl bg-[#E8FF00] text-black hover:bg-[#d4eb00] transition-all"
-          >
-            {isRunningSetup ? (
-              <span className="flex items-center gap-2">
-                <LoadingSpinner />
-                {isXConnectionOnly ? 'Connecting...' : 'Setting up...'}
-              </span>
-            ) : isXConnectionOnly ? (
-              <span className="flex items-center gap-2">
-                Connect to
-                <XLogoIcon className="w-5 h-5" />
-              </span>
-            ) : (
-              'Connect to Trade'
-            )}
-          </Button>
-        ) : (
-          <Button
-            onClick={onExecute}
-            disabled={!canExecute}
-            className={`
-              h-12 px-8 text-base font-semibold rounded-xl transition-all
-              ${canExecute
-                ? 'bg-[#E8FF00] text-black hover:bg-[#d4eb00]'
-                : 'bg-white/[0.1] text-white/40 cursor-not-allowed'
-              }
-            `}
-          >
-            {isExecuting ? (
-              <span className="flex items-center gap-2">
-                <LoadingSpinner />
-                Executing...
-              </span>
-            ) : isGenerating ? (
-              <span className="flex items-center gap-2">
-                <LoadingSpinner />
-                Generating...
-              </span>
-            ) : (
-              'Execute Trade'
-            )}
-          </Button>
-        )}
+        <div className="flex flex-col items-end gap-2">
+          {/* Error message when blocked */}
+          {blockReason && isSetupComplete && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20">
+              <WarningIcon className="w-4 h-4 text-red-400 flex-shrink-0" />
+              <span className="text-xs text-red-400">{blockReason.message}</span>
+            </div>
+          )}
+
+          {!isSetupComplete ? (
+            <Button
+              onClick={onConnectToTrade}
+              disabled={isRunningSetup}
+              className="h-12 px-8 text-base font-semibold rounded-xl bg-[#E8FF00] text-black hover:bg-[#d4eb00] transition-all"
+            >
+              {isRunningSetup ? (
+                <span className="flex items-center gap-2">
+                  <LoadingSpinner />
+                  {isXConnectionOnly ? 'Connecting...' : 'Setting up...'}
+                </span>
+              ) : isXConnectionOnly ? (
+                <span className="flex items-center gap-2">
+                  Connect to
+                  <XLogoIcon className="w-5 h-5" />
+                </span>
+              ) : (
+                'Connect to Trade'
+              )}
+            </Button>
+          ) : (
+            <Button
+              onClick={onExecute}
+              disabled={!canExecute}
+              className={`
+                h-12 px-8 text-base font-semibold rounded-xl transition-all
+                ${canExecute
+                  ? 'bg-[#E8FF00] text-black hover:bg-[#d4eb00]'
+                  : 'bg-white/[0.1] text-white/40 cursor-not-allowed'
+                }
+              `}
+            >
+              {isExecuting ? (
+                <span className="flex items-center gap-2">
+                  <LoadingSpinner />
+                  Executing...
+                </span>
+              ) : isGenerating ? (
+                <span className="flex items-center gap-2">
+                  <LoadingSpinner />
+                  Generating...
+                </span>
+              ) : (
+                'Execute Trade'
+              )}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Mobile: Stacked Layout */}
@@ -296,6 +345,14 @@ export function TradeControlPanel({
             Available: ${availableBalance.toFixed(2)}
           </span>
         </div>
+
+        {/* Mobile Error Message */}
+        {blockReason && isSetupComplete && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20">
+            <WarningIcon className="w-4 h-4 text-red-400 flex-shrink-0" />
+            <span className="text-xs text-red-400">{blockReason.message}</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -321,7 +378,40 @@ function AssetBadge({
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editWeight, setEditWeight] = useState((weight * 100).toFixed(0));
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const badgeRef = useRef<HTMLDivElement>(null);
   const isLong = side === 'long';
+
+  // Handle click outside to close popover
+  useEffect(() => {
+    if (!isEditing) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        popoverRef.current &&
+        badgeRef.current &&
+        !popoverRef.current.contains(event.target as Node) &&
+        !badgeRef.current.contains(event.target as Node)
+      ) {
+        setIsEditing(false);
+      }
+    };
+
+    // Add a small delay to prevent immediate close from the click that opened it
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 10);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isEditing]);
+
+  // Reset edit weight when weight prop changes
+  useEffect(() => {
+    setEditWeight((weight * 100).toFixed(0));
+  }, [weight]);
 
   const handleWeightChange = () => {
     const newWeight = parseFloat(editWeight) / 100;
@@ -331,9 +421,15 @@ function AssetBadge({
     setIsEditing(false);
   };
 
+  const handleCancel = () => {
+    setEditWeight((weight * 100).toFixed(0));
+    setIsEditing(false);
+  };
+
   return (
     <div className="group relative">
       <div
+        ref={badgeRef}
         className={`flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded cursor-pointer transition-all ${
           isLong
             ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
@@ -362,13 +458,19 @@ function AssetBadge({
 
       {/* Weight edit popover */}
       {isEditing && (
-        <div className="absolute top-full left-0 mt-1 z-50 p-2 rounded-lg bg-black/90 border border-white/20 shadow-xl">
+        <div
+          ref={popoverRef}
+          className="absolute top-full left-0 mt-1 z-50 p-2 rounded-lg bg-black/90 border border-white/20 shadow-xl"
+        >
           <div className="flex items-center gap-2">
             <input
               type="number"
               value={editWeight}
               onChange={(e) => setEditWeight(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleWeightChange()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleWeightChange();
+                if (e.key === 'Escape') handleCancel();
+              }}
               className="w-16 px-2 py-1 text-xs bg-white/10 border border-white/20 rounded text-white"
               min="1"
               max="100"
@@ -378,8 +480,16 @@ function AssetBadge({
             <button
               onClick={handleWeightChange}
               className="p-1 rounded bg-white/10 hover:bg-white/20 text-white/60"
+              title="Apply"
             >
               <CheckIcon className="w-3 h-3" />
+            </button>
+            <button
+              onClick={handleCancel}
+              className="p-1 rounded bg-white/10 hover:bg-white/20 text-white/60"
+              title="Cancel"
+            >
+              <XIcon className="w-3 h-3" />
             </button>
           </div>
         </div>
@@ -547,6 +657,14 @@ function XLogoIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">
       <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  );
+}
+
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
     </svg>
   );
 }

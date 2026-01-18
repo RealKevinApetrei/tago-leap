@@ -1,22 +1,27 @@
 import type { CryptoTweet } from '@/components/social/TweetCard';
 
-// Mock crypto influencer accounts
+// Crypto Twitter influencer accounts with real profile pictures
 const AUTHORS = [
-  { username: 'CryptoKaleo', displayName: 'Kaleo', avatar: 'https://pbs.twimg.com/profile_images/1683968957243944960/MR3dY8e8_normal.jpg' },
-  { username: 'DefiIgnas', displayName: 'Ignas | DeFi', avatar: 'https://pbs.twimg.com/profile_images/1590689157876736000/Ej6YnPrR_normal.jpg' },
-  { username: 'inversebrah', displayName: 'inversebrah', avatar: 'https://pbs.twimg.com/profile_images/1609728794129842176/L7jR0bKQ_normal.jpg' },
-  { username: 'tier10k', displayName: 'Tier10K', avatar: 'https://pbs.twimg.com/profile_images/1723350046512893952/TBtMz3Qr_normal.jpg' },
-  { username: 'Route2FI', displayName: 'Route 2 FI', avatar: 'https://pbs.twimg.com/profile_images/1694091112925356032/m1z1xf5e_normal.jpg' },
-  { username: 'CryptoCred', displayName: 'Cred', avatar: 'https://pbs.twimg.com/profile_images/1567890123456789012/abcdefgh_normal.jpg' },
-  { username: 'coaborozdogan', displayName: 'Cobie', avatar: 'https://pbs.twimg.com/profile_images/1654898765432109876/xyz12345_normal.jpg' },
-  { username: 'SmartContracter', displayName: 'Smart Contracter', avatar: 'https://pbs.twimg.com/profile_images/1612345678901234567/qwerty_normal.jpg' },
-  { username: 'LightCrypto', displayName: 'Light', avatar: 'https://pbs.twimg.com/profile_images/1687654321098765432/light_normal.jpg' },
-  { username: 'CoinMamba', displayName: 'Coin Mamba', avatar: 'https://pbs.twimg.com/profile_images/1698765432109876543/mamba_normal.jpg' },
-  { username: 'AltcoinGordon', displayName: 'Gordon', avatar: 'https://pbs.twimg.com/profile_images/1709876543210987654/gordon_normal.jpg' },
-  { username: 'pentaborish', displayName: 'Pentoshi', avatar: 'https://pbs.twimg.com/profile_images/1710987654321098765/penta_normal.jpg' },
-  { username: 'aixaborozdogan', displayName: 'AI/ACC', avatar: 'https://pbs.twimg.com/profile_images/1721098765432109876/aixbt_normal.jpg' },
-  { username: 'MustStopMurad', displayName: 'Murad', avatar: 'https://pbs.twimg.com/profile_images/1732109876543210987/murad_normal.jpg' },
-  { username: 'blaborz', displayName: 'Blaborz', avatar: 'https://pbs.twimg.com/profile_images/1743210987654321098/blaborz_normal.jpg' },
+  { username: 'CryptoKaleo', displayName: 'Kaleo', avatar: 'https://unavatar.io/twitter/CryptoKaleo' },
+  { username: 'DefiIgnas', displayName: 'Ignas | DeFi', avatar: 'https://unavatar.io/twitter/DefiIgnas' },
+  { username: 'inversebrah', displayName: 'inversebrah', avatar: 'https://unavatar.io/twitter/inversebrah' },
+  { username: 'tier10k', displayName: 'Tier10K', avatar: 'https://unavatar.io/twitter/tier10k' },
+  { username: 'Route2FI', displayName: 'Route 2 FI', avatar: 'https://unavatar.io/twitter/Route2FI' },
+  { username: 'CryptoCred', displayName: 'Cred', avatar: 'https://unavatar.io/twitter/CryptoCred' },
+  { username: 'coaborozdogan', displayName: 'Cobie', avatar: 'https://unavatar.io/twitter/coaborozdogan' },
+  { username: 'SmartContracter', displayName: 'Smart Contracter', avatar: 'https://unavatar.io/twitter/SmartContracter' },
+  { username: 'LightCrypto', displayName: 'Light', avatar: 'https://unavatar.io/twitter/LightCrypto' },
+  { username: 'CoinMamba', displayName: 'Coin Mamba', avatar: 'https://unavatar.io/twitter/CoinMamba' },
+  { username: 'AltcoinGordon', displayName: 'Gordon', avatar: 'https://unavatar.io/twitter/AltcoinGordon' },
+  { username: 'Pentosh1', displayName: 'Pentoshi', avatar: 'https://unavatar.io/twitter/Pentosh1' },
+  { username: 'aixbt_agent', displayName: 'aixbt', avatar: 'https://unavatar.io/twitter/aixbt_agent' },
+  { username: 'MustStopMurad', displayName: 'Murad', avatar: 'https://unavatar.io/twitter/MustStopMurad' },
+  { username: 'blaborz', displayName: 'Blknoiz06', avatar: 'https://unavatar.io/twitter/Blknoiz06' },
+  { username: 'hsaborozdogan', displayName: 'hsaka', avatar: 'https://unavatar.io/twitter/HsakaTrades' },
+  { username: 'CryptoHayes', displayName: 'Arthur Hayes', avatar: 'https://unavatar.io/twitter/CryptoHayes' },
+  { username: 'GiganticRebirth', displayName: 'GCR', avatar: 'https://unavatar.io/twitter/GiganticRebirth' },
+  { username: 'loomdart', displayName: 'loomdart', avatar: 'https://unavatar.io/twitter/loomdart' },
+  { username: 'RaoulGMI', displayName: 'Raoul Pal', avatar: 'https://unavatar.io/twitter/RaoulGMI' },
 ];
 
 // Generate random metrics

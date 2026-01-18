@@ -89,6 +89,7 @@ export function TweetCard({
             <span className="font-semibold text-white truncate">
               {tweet.authorDisplayName}
             </span>
+            <XLogoIcon className="w-3.5 h-3.5 text-white/40" />
             <span className="text-white/40 text-sm">@{tweet.authorUsername}</span>
             <span className="text-white/30 text-sm">{timeAgo}</span>
             <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${categoryStyle.bg} ${categoryStyle.text}`}>
@@ -237,6 +238,7 @@ export function SelectedTweetCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-medium text-white text-sm">{tweet.authorDisplayName}</span>
+            <XLogoIcon className="w-3 h-3 text-white/40" />
             <span className={`px-1.5 py-0.5 text-xs font-medium rounded ${categoryStyle.bg} ${categoryStyle.text}`}>
               {categoryStyle.label}
             </span>
@@ -342,6 +344,14 @@ function XIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M18 6L6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
+function XLogoIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
     </svg>
   );
 }

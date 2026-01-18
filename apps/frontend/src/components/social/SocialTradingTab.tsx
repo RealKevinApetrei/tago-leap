@@ -12,6 +12,7 @@ import { TradeControlPanel } from './TradeControlPanel';
 import { StrategyInfoTab } from './StrategyInfoTab';
 import { useSocialTrade, SocialTradeProvider } from '@/contexts/SocialTradeContext';
 import { useUnifiedSetupContext } from '@/contexts/UnifiedSetupContext';
+import { usePolicyValidation } from '@/hooks/usePolicyValidation';
 import { saltApi, NarrativeSuggestion } from '@/lib/api';
 import { MOCK_TWEETS, getShuffledTweets } from '@/data/mockTweets';
 
@@ -50,6 +51,7 @@ function SocialTradingContent({
     setLeverage,
     updateAssetWeight,
     removeAsset,
+    applyBetaWeights,
   } = useSocialTrade();
 
   // Use unified setup context
@@ -60,6 +62,12 @@ function SocialTradingContent({
     isConnectingX,
     connectX,
   } = useUnifiedSetupContext();
+
+  // Policy validation for real risk limits
+  const {
+    policy: policyLimits,
+    todayNotional,
+  } = usePolicyValidation(accountId);
 
   // Tweet feed state
   const [tweets, setTweets] = useState<CryptoTweet[]>([]);
@@ -190,11 +198,12 @@ function SocialTradingContent({
   const strategyInfoPanel = (
     <StrategyInfoTab
       suggestion={suggestion}
-      todayNotional={0}
-      maxDailyNotional={100000}
+      todayNotional={todayNotional}
+      maxDailyNotional={policyLimits?.maxDailyNotionalUsd || 10000}
       accountHealth={accountHealth}
       availableBalance={availableBalance}
       maxLeverage={maxLeverage}
+      onUseBetaRatio={applyBetaWeights}
     />
   );
 

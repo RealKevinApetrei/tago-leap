@@ -38,6 +38,9 @@ interface SocialTradeState {
   // Asset weight management
   updateAssetWeight: (side: 'long' | 'short', index: number, weight: number) => void;
   removeAsset: (side: 'long' | 'short', asset: string) => void;
+
+  // Beta ratio auto-adjustment
+  applyBetaWeights: (longWeight: number, shortWeight: number) => void;
 }
 
 const SocialTradeContext = createContext<SocialTradeState | null>(null);
@@ -53,7 +56,7 @@ export function SocialTradeProvider({ children }: { children: ReactNode }) {
   const [generateError, setGenerateError] = useState<string | null>(null);
 
   // Trade configuration
-  const [stakeUsd, setStakeUsd] = useState('100');
+  const [stakeUsd, setStakeUsd] = useState('10');
   const [leverage, setLeverage] = useState(3);
 
   // Select a tweet for custom input
@@ -129,6 +132,37 @@ export function SocialTradeProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // Apply beta weights to create a beta-neutral position
+  // longWeight and shortWeight are the optimal allocation ratios based on beta
+  const applyBetaWeights = useCallback((longWeight: number, shortWeight: number) => {
+    setSuggestion(prev => {
+      if (!prev) return prev;
+
+      // For single-asset pairs, apply the weights directly
+      const updatedLongAssets = prev.longAssets.map((a, i) =>
+        i === 0 ? { ...a, weight: longWeight } : { ...a, weight: 0 }
+      ).filter(a => a.weight > 0);
+
+      const updatedShortAssets = prev.shortAssets.map((a, i) =>
+        i === 0 ? { ...a, weight: shortWeight } : { ...a, weight: 0 }
+      ).filter(a => a.weight > 0);
+
+      // Normalize if needed (should already sum to 1)
+      const normalizeAssets = (assets: typeof updatedLongAssets) => {
+        if (assets.length === 0) return assets;
+        const total = assets.reduce((sum, a) => sum + a.weight, 0);
+        if (total === 0 || Math.abs(total - 1) < 0.01) return assets;
+        return assets.map(a => ({ ...a, weight: a.weight / total }));
+      };
+
+      return {
+        ...prev,
+        longAssets: normalizeAssets(updatedLongAssets),
+        shortAssets: normalizeAssets(updatedShortAssets),
+      };
+    });
+  }, []);
+
   // Generate trade from tweet with direction (Bullish/Bearish buttons)
   const generateFromTweet = useCallback(async (tweet: CryptoTweet, direction: 'long' | 'short') => {
     setIsGenerating(true);
@@ -146,10 +180,7 @@ export function SocialTradeProvider({ children }: { children: ReactNode }) {
       const result = await pearApi.suggestNarrative(prompt);
       setSuggestion(result);
 
-      // Apply suggested stake/leverage if provided
-      if (result.suggestedStakeUsd) {
-        setStakeUsd(result.suggestedStakeUsd.toString());
-      }
+      // Apply suggested leverage if provided (keep stake at user's default)
       if (result.suggestedLeverage) {
         setLeverage(result.suggestedLeverage);
       }
@@ -188,10 +219,7 @@ Generate a pair trade based on this market narrative.`;
       const result = await pearApi.suggestNarrative(prompt);
       setSuggestion(result);
 
-      // Apply suggested stake/leverage if provided
-      if (result.suggestedStakeUsd) {
-        setStakeUsd(result.suggestedStakeUsd.toString());
-      }
+      // Apply suggested leverage if provided (keep stake at user's default)
       if (result.suggestedLeverage) {
         setLeverage(result.suggestedLeverage);
       }
@@ -221,6 +249,7 @@ Generate a pair trade based on this market narrative.`;
     setLeverage,
     updateAssetWeight,
     removeAsset,
+    applyBetaWeights,
   };
 
   return (
