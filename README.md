@@ -210,7 +210,7 @@ pnpm dev
 
 ## Team
 
-Built for Hyperstack Hackathon 2025
+Built for Hyperliquid Hackathon 2026
 
 
 ---
