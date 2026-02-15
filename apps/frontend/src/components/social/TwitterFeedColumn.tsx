@@ -9,6 +9,8 @@ import { ASCIILoader } from '@/components/ascii';
 interface TwitterFeedColumnProps {
   title: string;
   category: TweetCategory;
+  /** Additional categories to include alongside the primary category */
+  categories?: TweetCategory[];
   tweets: CryptoTweet[];
   isLoading: boolean;
   selectedTweetId?: string;
@@ -25,6 +27,7 @@ interface TwitterFeedColumnProps {
 export function TwitterFeedColumn({
   title,
   category,
+  categories,
   tweets,
   isLoading,
   selectedTweetId,
@@ -35,7 +38,8 @@ export function TwitterFeedColumn({
   autoScroll = true,
   scrollSpeed = 30,
 }: TwitterFeedColumnProps) {
-  const filteredTweets = tweets.filter(t => t.category === category);
+  const allowedCategories = categories || [category];
+  const filteredTweets = tweets.filter(t => allowedCategories.includes(t.category));
 
   const {
     containerRef,

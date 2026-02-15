@@ -14,7 +14,7 @@ import { useSocialTrade, SocialTradeProvider } from '@/contexts/SocialTradeConte
 import { useUnifiedSetupContext } from '@/contexts/UnifiedSetupContext';
 import { usePolicyValidation } from '@/hooks/usePolicyValidation';
 import { saltApi, NarrativeSuggestion } from '@/lib/api';
-import { MOCK_TWEETS, getShuffledTweets } from '@/data/mockTweets';
+import { getShuffledTweets } from '@/data/mockTweets';
 
 interface SocialTradingTabProps {
   accountId: string | null;
@@ -72,23 +72,41 @@ function SocialTradingContent({
   // Tweet feed state
   const [tweets, setTweets] = useState<CryptoTweet[]>([]);
   const [isLoadingTweets, setIsLoadingTweets] = useState(true);
+  const [feedSource, setFeedSource] = useState<'api' | 'mock' | 'cache'>('mock');
 
   // Execution state
   const [isExecuting, setIsExecuting] = useState(false);
   const [executeError, setExecuteError] = useState<string | null>(null);
 
-  // Load mock tweets (demo mode)
-  useEffect(() => {
+  // Fetch real tweets from API, fallback to mock
+  const fetchTweets = useCallback(async () => {
     setIsLoadingTweets(true);
-
-    // Simulate loading delay for realism
-    const timer = setTimeout(() => {
+    try {
+      const res = await fetch('/api/twitter/feed?limit=100');
+      const data = await res.json();
+      if (data.tweets && data.tweets.length > 0) {
+        setTweets(data.tweets);
+        setFeedSource(data.source || 'api');
+      } else {
+        // Fallback to mock if API returns empty
+        setTweets(getShuffledTweets());
+        setFeedSource('mock');
+      }
+    } catch (err) {
+      console.error('Failed to fetch tweets:', err);
       setTweets(getShuffledTweets());
+      setFeedSource('mock');
+    } finally {
       setIsLoadingTweets(false);
-    }, 500);
-
-    return () => clearTimeout(timer);
+    }
   }, []);
+
+  // Fetch tweets on mount and set up refresh interval
+  useEffect(() => {
+    fetchTweets();
+    const interval = setInterval(fetchTweets, 2 * 60 * 1000); // Refresh every 2 minutes
+    return () => clearInterval(interval);
+  }, [fetchTweets]);
 
   // Handle Bullish button
   const handleBullish = useCallback((tweet: CryptoTweet) => {
@@ -151,17 +169,19 @@ function SocialTradingContent({
   // No header needed - columns have their own titles
   const header = null;
 
-  // Left column - AI tweets
+  // Left column - AI, L1, Infrastructure, Other tweets
   const leftColumn = (
     <TwitterFeedColumn
-      title="AI & Tech"
+      title="AI & L1"
       category="ai"
+      categories={['ai', 'l1', 'infrastructure', 'other']}
       tweets={tweets}
       isLoading={isLoadingTweets}
       selectedTweetId={selectedTweet?.id}
       onBullish={handleBullish}
       onBearish={handleBearish}
       onSelect={handleSelect}
+      onRefresh={fetchTweets}
     />
   );
 
@@ -180,17 +200,19 @@ function SocialTradingContent({
     </div>
   );
 
-  // Right column - Meme/DeFi tweets
+  // Right column - Meme, DeFi, Gaming tweets
   const rightColumn = (
     <TwitterFeedColumn
       title="Meme & DeFi"
       category="meme"
-      tweets={[...getTweetsByCategory('meme'), ...getTweetsByCategory('defi')]}
+      categories={['meme', 'defi', 'gaming']}
+      tweets={tweets}
       isLoading={isLoadingTweets}
       selectedTweetId={selectedTweet?.id}
       onBullish={handleBullish}
       onBearish={handleBearish}
       onSelect={handleSelect}
+      onRefresh={fetchTweets}
     />
   );
 

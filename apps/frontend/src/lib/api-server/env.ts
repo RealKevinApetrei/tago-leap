@@ -30,6 +30,9 @@ export const serverEnv = {
   X_CLIENT_SECRET: process.env.X_CLIENT_SECRET || '',
   X_CALLBACK_URL: process.env.X_CALLBACK_URL || '',
 
+  // TwitterAPI.io (twitter-stream)
+  TWITTER_STREAM_API_KEY: process.env.TWITTER_STREAM_API_KEY || '',
+
   // Cron
   CRON_SECRET: process.env.CRON_SECRET || '',
 };

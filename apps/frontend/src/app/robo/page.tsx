@@ -581,29 +581,8 @@ export default function RoboPage() {
     );
   }
 
-  // Only show setup panel if user hasn't authenticated at all
-  // If they've authenticated via homepage, let them through even if other steps aren't complete
-  if (isConnected && !isAuthenticated && !authLoading) {
-    return (
-      <div className="max-w-lg mx-auto px-4 py-8 space-y-6">
-        <SwapPanel title="Setup Required" subtitle="Authenticate to start trading">
-          <div className="space-y-4">
-            <p className="text-white/50 text-sm text-center">
-              Please complete setup on the homepage first.
-            </p>
-
-            {/* Action */}
-            <a
-              href="/"
-              className="block w-full py-3 text-center bg-tago-yellow-400 text-black font-medium rounded-lg hover:bg-tago-yellow-300 transition-colors"
-            >
-              Go to Homepage
-            </a>
-          </div>
-        </SwapPanel>
-      </div>
-    );
-  }
+  // NOTE: Pear auth gate removed - dashboard is accessible without Pear service.
+  // Trade execution still requires auth (handled in TradeControlPanel).
 
   // Helper to truncate address
   const truncateAddress = (addr: string | null | undefined) => {

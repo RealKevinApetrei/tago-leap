@@ -1,62 +1,18 @@
-import { TwitterApi, TweetV2, UserV2 } from 'twitter-api-v2';
 import { serverEnv } from '../env';
 
 /**
- * Validate X OAuth configuration
- * Returns error message if invalid, null if valid
+ * TwitterAPI.io client for fetching real-time crypto tweets
+ * Uses the twitter-stream monitoring service + user tweets API
  */
-export function validateXConfig(): string | null {
-  if (!serverEnv.X_CLIENT_ID) {
-    return 'X_CLIENT_ID is not configured. Please set it in your environment variables.';
-  }
-  if (!serverEnv.X_CLIENT_SECRET) {
-    return 'X_CLIENT_SECRET is not configured. Please set it in your environment variables.';
-  }
-  if (!serverEnv.X_CALLBACK_URL) {
-    return 'X_CALLBACK_URL is not configured. Please set it in your environment variables.';
-  }
-  // Validate callback URL format
-  try {
-    const url = new URL(serverEnv.X_CALLBACK_URL);
-    if (!url.pathname.includes('/api/twitter/auth/callback')) {
-      return `X_CALLBACK_URL should end with /api/twitter/auth/callback. Got: ${serverEnv.X_CALLBACK_URL}`;
-    }
-  } catch {
-    return `X_CALLBACK_URL is not a valid URL: ${serverEnv.X_CALLBACK_URL}`;
-  }
-  return null;
-}
 
-// Initialize Twitter client with bearer token for app-only auth
-const getAppClient = () => {
-  if (!serverEnv.X_BEARER_TOKEN) {
-    throw new Error('X_BEARER_TOKEN is not configured');
-  }
-  return new TwitterApi(serverEnv.X_BEARER_TOKEN);
-};
-
-// Initialize Twitter client with user OAuth tokens
-export const getUserClient = (accessToken: string) => {
-  return new TwitterApi(accessToken);
-};
-
-// Curated list of crypto Twitter accounts to fetch from
-const CRYPTO_ACCOUNTS = [
+// Top crypto accounts we monitor (up to 6 on Starter Plan)
+export const MONITORED_ACCOUNTS = [
+  'aixbt_agent',
+  'CryptoHayes',
   'tier10k',
   'DefiIgnas',
-  'CryptoKaleo',
-  'inversebrah',
-  'coaborozdogan',
-  'pentaborish',
-  'CryptoCred',
-  'SmartContracter',
-  'Route2FI',
-  'LightCrypto',
-  'CoinMamba',
-  'SBF_FTX', // For historical context
-  'ethereum',
-  'solaborana',
-  'AltcoinGordon',
+  'Pentosh1',
+  'MustStopMurad',
 ];
 
 export interface CryptoTweet {
@@ -77,218 +33,199 @@ export interface CryptoTweet {
   media?: { url: string; type: 'photo' | 'video' }[];
 }
 
+interface TwitterApiTweet {
+  type: string;
+  id: string;
+  url: string;
+  text: string;
+  retweetCount: number;
+  replyCount: number;
+  likeCount: number;
+  quoteCount: number;
+  viewCount: number;
+  createdAt: string;
+  lang: string;
+  isReply: boolean;
+  author: {
+    userName: string;
+    name: string;
+    profilePicture: string;
+    id: string;
+    followers: number;
+  };
+  extendedEntities?: {
+    media?: Array<{
+      type: string;
+      media_url_https?: string;
+      url?: string;
+    }>;
+  };
+}
+
+interface TwitterApiResponse {
+  status: string;
+  code: number;
+  msg: string;
+  data: {
+    tweets: TwitterApiTweet[];
+    has_next_page: boolean;
+    next_cursor: string;
+    pin_tweet: TwitterApiTweet | null;
+  };
+}
+
+const API_BASE = 'https://api.twitterapi.io';
+
 /**
- * Fetch recent tweets from curated crypto accounts
+ * Fetch latest tweets from a single user via twitterapi.io
+ */
+async function fetchUserTweets(username: string): Promise<TwitterApiTweet[]> {
+  const apiKey = serverEnv.TWITTER_STREAM_API_KEY;
+  if (!apiKey) {
+    throw new Error('TWITTER_STREAM_API_KEY is not configured');
+  }
+
+  const url = `${API_BASE}/twitter/user/last_tweets?userName=${encodeURIComponent(username)}`;
+
+  const res = await fetch(url, {
+    headers: { 'X-API-Key': apiKey },
+    next: { revalidate: 60 }, // Cache for 60 seconds in Next.js
+  });
+
+  if (!res.ok) {
+    throw new Error(`TwitterAPI.io error: ${res.status} ${res.statusText}`);
+  }
+
+  const json: TwitterApiResponse = await res.json();
+
+  if (json.status !== 'success') {
+    throw new Error(`TwitterAPI.io error: ${json.msg}`);
+  }
+
+  return (json.data?.tweets || []).filter(t => !t.isReply);
+}
+
+/**
+ * Fetch recent tweets from all monitored crypto accounts
  */
 export async function fetchCryptoTweets(options?: {
   maxResults?: number;
-  listId?: string;
-  userAccessToken?: string;
+  accounts?: string[];
 }): Promise<CryptoTweet[]> {
-  const { maxResults = 50, listId, userAccessToken } = options || {};
+  const { maxResults = 50, accounts = MONITORED_ACCOUNTS } = options || {};
 
-  try {
-    const client = userAccessToken ? getUserClient(userAccessToken) : getAppClient();
-    const readOnlyClient = client.readOnly;
+  // Fetch tweets from all accounts in parallel
+  const results = await Promise.allSettled(
+    accounts.map(username => fetchUserTweets(username))
+  );
 
-    let tweets: TweetV2[] = [];
-    const userMap = new Map<string, UserV2>();
+  const allTweets: TwitterApiTweet[] = [];
 
-    if (listId) {
-      // Fetch from a specific list
-      const listTweets = await readOnlyClient.v2.listTweets(listId, {
-        max_results: maxResults,
-        'tweet.fields': ['created_at', 'public_metrics', 'attachments', 'entities'],
-        'user.fields': ['username', 'name', 'profile_image_url'],
-        expansions: ['author_id', 'attachments.media_keys'],
-        'media.fields': ['url', 'type', 'preview_image_url'],
-      });
-
-      tweets = listTweets.data?.data || [];
-
-      // Build user map from includes
-      if (listTweets.data?.includes?.users) {
-        for (const user of listTweets.data.includes.users) {
-          userMap.set(user.id, user);
-        }
-      }
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      allTweets.push(...result.value);
     } else {
-      // Search for recent crypto tweets
-      const searchQuery = '(crypto OR bitcoin OR ethereum OR solana OR defi OR NFT) -is:retweet lang:en';
-
-      const searchResult = await readOnlyClient.v2.search(searchQuery, {
-        max_results: Math.min(maxResults, 100),
-        'tweet.fields': ['created_at', 'public_metrics', 'attachments', 'entities'],
-        'user.fields': ['username', 'name', 'profile_image_url'],
-        expansions: ['author_id', 'attachments.media_keys'],
-        'media.fields': ['url', 'type', 'preview_image_url'],
-        sort_order: 'relevancy',
-      });
-
-      tweets = searchResult.data?.data || [];
-
-      // Build user map from includes
-      if (searchResult.data?.includes?.users) {
-        for (const user of searchResult.data.includes.users) {
-          userMap.set(user.id, user);
-        }
-      }
+      console.warn('[twitterClient] Failed to fetch from account:', result.reason);
     }
-
-    // Transform tweets to our format
-    const cryptoTweets: CryptoTweet[] = tweets.map((tweet) => {
-      const author = userMap.get(tweet.author_id || '');
-      const mentionedAssets = extractAssets(tweet.text);
-      const category = categorizeFromAssets(mentionedAssets, tweet.text);
-
-      return {
-        id: tweet.id,
-        authorUsername: author?.username || 'unknown',
-        authorDisplayName: author?.name || 'Unknown',
-        authorAvatar: author?.profile_image_url || '',
-        content: tweet.text,
-        createdAt: tweet.created_at || new Date().toISOString(),
-        metrics: {
-          likes: tweet.public_metrics?.like_count || 0,
-          retweets: tweet.public_metrics?.retweet_count || 0,
-          replies: tweet.public_metrics?.reply_count || 0,
-        },
-        mentionedAssets,
-        category,
-        sentiment: undefined, // Will be set by AI categorization
-      };
-    });
-
-    // Sort by engagement (likes + retweets)
-    cryptoTweets.sort((a, b) => {
-      const engagementA = a.metrics.likes + a.metrics.retweets * 2;
-      const engagementB = b.metrics.likes + b.metrics.retweets * 2;
-      return engagementB - engagementA;
-    });
-
-    return cryptoTweets;
-  } catch (error) {
-    console.error('[twitterClient] Error fetching tweets:', error);
-    throw error;
   }
+
+  // Transform to our format
+  const cryptoTweets: CryptoTweet[] = allTweets.map(tweet => {
+    const mentionedAssets = extractAssets(tweet.text);
+    const category = categorizeFromAssets(mentionedAssets, tweet.text);
+    const media = extractMedia(tweet);
+
+    return {
+      id: tweet.id,
+      authorUsername: tweet.author?.userName || 'unknown',
+      authorDisplayName: tweet.author?.name || 'Unknown',
+      authorAvatar: tweet.author?.profilePicture || '',
+      content: tweet.text,
+      createdAt: parseTwitterDate(tweet.createdAt),
+      metrics: {
+        likes: tweet.likeCount || 0,
+        retweets: tweet.retweetCount || 0,
+        replies: tweet.replyCount || 0,
+      },
+      mentionedAssets,
+      category,
+      sentiment: undefined,
+      media,
+    };
+  });
+
+  // Sort by date (newest first)
+  cryptoTweets.sort((a, b) =>
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
+  return cryptoTweets.slice(0, maxResults);
 }
 
 /**
- * Fetch user's Twitter lists
+ * Parse Twitter's date format ("Sun Feb 15 15:39:31 +0000 2026") to ISO string
  */
-export async function fetchUserLists(accessToken: string): Promise<{
-  id: string;
-  name: string;
-  memberCount: number;
-  description?: string;
-}[]> {
+function parseTwitterDate(dateStr: string): string {
   try {
-    const client = getUserClient(accessToken);
-    const me = await client.v2.me();
-    const lists = await client.v2.listsOwned(me.data.id, {
-      'list.fields': ['member_count', 'description'],
-    });
-
-    return (lists.data?.data || []).map((list) => ({
-      id: list.id,
-      name: list.name,
-      memberCount: list.member_count || 0,
-      description: list.description,
-    }));
-  } catch (error) {
-    console.error('[twitterClient] Error fetching user lists:', error);
-    throw error;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return new Date().toISOString();
+    return d.toISOString();
+  } catch {
+    return new Date().toISOString();
   }
 }
 
 /**
- * Get OAuth 2.0 authorization URL
+ * Extract media from tweet
  */
-export function getAuthUrl(state: string, codeChallenge: string): string {
-  const params = new URLSearchParams({
-    response_type: 'code',
-    client_id: serverEnv.X_CLIENT_ID,
-    redirect_uri: serverEnv.X_CALLBACK_URL,
-    scope: 'tweet.read users.read list.read offline.access',
-    state,
-    code_challenge: codeChallenge,
-    code_challenge_method: 'S256',
-  });
+function extractMedia(tweet: TwitterApiTweet): { url: string; type: 'photo' | 'video' }[] | undefined {
+  const media = tweet.extendedEntities?.media;
+  if (!media || media.length === 0) return undefined;
 
-  return `https://twitter.com/i/oauth2/authorize?${params.toString()}`;
+  return media
+    .filter(m => m.media_url_https || m.url)
+    .map(m => ({
+      url: m.media_url_https || m.url || '',
+      type: (m.type === 'video' || m.type === 'animated_gif' ? 'video' : 'photo') as 'photo' | 'video',
+    }));
 }
 
-/**
- * Exchange authorization code for tokens
- */
+// ========================================
+// Legacy OAuth stubs (kept for auth route compatibility)
+// These are not used by the feed - feed uses twitterapi.io directly
+// ========================================
+
+export function validateXConfig(): string | null {
+  return 'X OAuth is not configured. Feed uses TwitterAPI.io instead.';
+}
+
+export function getAuthUrl(_state: string, _codeChallenge: string): string {
+  return '';
+}
+
 export async function exchangeCodeForTokens(
-  code: string,
-  codeVerifier: string
-): Promise<{
-  accessToken: string;
-  refreshToken?: string;
-  expiresIn: number;
-}> {
-  const client = new TwitterApi({
-    clientId: serverEnv.X_CLIENT_ID,
-    clientSecret: serverEnv.X_CLIENT_SECRET,
-  });
-
-  const result = await client.loginWithOAuth2({
-    code,
-    codeVerifier,
-    redirectUri: serverEnv.X_CALLBACK_URL,
-  });
-
-  return {
-    accessToken: result.accessToken,
-    refreshToken: result.refreshToken,
-    expiresIn: result.expiresIn,
-  };
+  _code: string,
+  _codeVerifier: string
+): Promise<{ accessToken: string; refreshToken?: string; expiresIn: number }> {
+  throw new Error('X OAuth not configured');
 }
 
-/**
- * Refresh access token
- */
-export async function refreshAccessToken(refreshToken: string): Promise<{
-  accessToken: string;
-  refreshToken?: string;
-  expiresIn: number;
-}> {
-  const client = new TwitterApi({
-    clientId: serverEnv.X_CLIENT_ID,
-    clientSecret: serverEnv.X_CLIENT_SECRET,
-  });
-
-  const result = await client.refreshOAuth2Token(refreshToken);
-
-  return {
-    accessToken: result.accessToken,
-    refreshToken: result.refreshToken,
-    expiresIn: result.expiresIn,
-  };
-}
-
-/**
- * Get user info from access token
- */
-export async function getUserInfo(accessToken: string): Promise<{
+export async function getUserInfo(_accessToken: string): Promise<{
   id: string;
   username: string;
   displayName: string;
   avatar: string;
 }> {
-  const client = getUserClient(accessToken);
-  const me = await client.v2.me({
-    'user.fields': ['profile_image_url', 'name'],
-  });
+  throw new Error('X OAuth not configured');
+}
 
-  return {
-    id: me.data.id,
-    username: me.data.username,
-    displayName: me.data.name,
-    avatar: me.data.profile_image_url || '',
-  };
+export async function fetchUserLists(_accessToken: string): Promise<{
+  id: string;
+  name: string;
+  memberCount: number;
+  description?: string;
+}[]> {
+  throw new Error('X OAuth not configured');
 }
 
 // Helper: Extract crypto assets from tweet text
@@ -332,7 +269,7 @@ function extractAssets(text: string): string[] {
     }
   }
 
-  return [...new Set(assets)]; // Remove duplicates
+  return [...new Set(assets)];
 }
 
 // Helper: Categorize based on mentioned assets
@@ -349,16 +286,14 @@ function categorizeFromAssets(
     infrastructure: ['ARB', 'OP', 'MATIC', 'STRK', 'ZK', 'MANTA'],
   };
 
-  // Check assets against categories
   for (const [category, categoryAssets] of Object.entries(categories)) {
-    if (assets.some((asset) => categoryAssets.includes(asset))) {
+    if (assets.some(asset => categoryAssets.includes(asset))) {
       return category as any;
     }
   }
 
-  // Check text content for category hints
   const lowerText = text.toLowerCase();
-  if (lowerText.includes('ai ') || lowerText.includes('artificial intelligence')) return 'ai';
+  if (lowerText.includes('ai ') || lowerText.includes('artificial intelligence') || lowerText.includes('agent')) return 'ai';
   if (lowerText.includes('meme') || lowerText.includes('degen')) return 'meme';
   if (lowerText.includes('defi') || lowerText.includes('yield') || lowerText.includes('lending')) return 'defi';
   if (lowerText.includes('layer 1') || lowerText.includes('l1')) return 'l1';
