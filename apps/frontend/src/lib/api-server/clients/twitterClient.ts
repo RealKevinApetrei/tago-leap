@@ -5,18 +5,14 @@ import { serverEnv } from '../env';
  * Uses the twitter-stream monitoring service + user tweets API
  */
 
-// Top crypto accounts we monitor (up to 6 on Starter Plan)
-export const MONITORED_ACCOUNTS = [
-  'aixbt_agent',
-  'CryptoHayes',
-  'tier10k',
-  'DefiIgnas',
-  'Pentosh1',
-  'MustStopMurad',
-];
+// KOL groups — split into two feed columns
+export const KOL_GROUP_LEFT = ['CryptoHayes', 'Pentosh1', 'DefiIgnas'] as const;
+export const KOL_GROUP_RIGHT = ['aixbt_agent', 'tier10k', 'MustStopMurad'] as const;
+export const MONITORED_ACCOUNTS = [...KOL_GROUP_LEFT, ...KOL_GROUP_RIGHT];
 
 export interface CryptoTweet {
   id: string;
+  url: string;
   authorUsername: string;
   authorDisplayName: string;
   authorAvatar: string;
@@ -62,81 +58,76 @@ interface TwitterApiTweet {
   };
 }
 
-interface TwitterApiResponse {
-  status: string;
-  code: number;
-  msg: string;
-  data: {
-    tweets: TwitterApiTweet[];
-    has_next_page: boolean;
-    next_cursor: string;
-    pin_tweet: TwitterApiTweet | null;
-  };
+interface AdvancedSearchResponse {
+  tweets: TwitterApiTweet[];
+  has_next_page: boolean;
+  next_cursor: string;
 }
 
 const API_BASE = 'https://api.twitterapi.io';
 
 /**
- * Fetch latest tweets from a single user via twitterapi.io
+ * Fetch tweets from a list of accounts using the advanced_search endpoint.
+ * Fetches multiple pages to get enough results.
  */
-async function fetchUserTweets(username: string): Promise<TwitterApiTweet[]> {
+async function searchTweetsByAccounts(
+  accounts: string[],
+  maxPages: number = 3,
+): Promise<TwitterApiTweet[]> {
   const apiKey = serverEnv.TWITTER_STREAM_API_KEY;
   if (!apiKey) {
     throw new Error('TWITTER_STREAM_API_KEY is not configured');
   }
 
-  const url = `${API_BASE}/twitter/user/last_tweets?userName=${encodeURIComponent(username)}`;
+  // Build query: from:user1 OR from:user2 ... -filter:replies
+  const fromQuery = accounts.map(u => `from:${u}`).join(' OR ');
+  const query = `(${fromQuery}) -filter:replies`;
 
-  const res = await fetch(url, {
-    headers: { 'X-API-Key': apiKey },
-    next: { revalidate: 60 }, // Cache for 60 seconds in Next.js
-  });
+  const allTweets: TwitterApiTweet[] = [];
+  let cursor = '';
 
-  if (!res.ok) {
-    throw new Error(`TwitterAPI.io error: ${res.status} ${res.statusText}`);
+  for (let page = 0; page < maxPages; page++) {
+    const params = new URLSearchParams({
+      query,
+      queryType: 'Latest',
+    });
+    if (cursor) params.set('cursor', cursor);
+
+    const url = `${API_BASE}/twitter/tweet/advanced_search?${params.toString()}`;
+
+    const res = await fetch(url, {
+      headers: { 'X-API-Key': apiKey },
+      next: { revalidate: 60 },
+    });
+
+    if (!res.ok) {
+      console.warn(`[twitterClient] advanced_search page ${page} error: ${res.status}`);
+      break;
+    }
+
+    const json: AdvancedSearchResponse = await res.json();
+    const tweets = json.tweets || [];
+    allTweets.push(...tweets);
+
+    if (!json.has_next_page || !json.next_cursor) break;
+    cursor = json.next_cursor;
   }
 
-  const json: TwitterApiResponse = await res.json();
-
-  if (json.status !== 'success') {
-    throw new Error(`TwitterAPI.io error: ${json.msg}`);
-  }
-
-  return (json.data?.tweets || []).filter(t => !t.isReply);
+  return allTweets;
 }
 
 /**
- * Fetch recent tweets from all monitored crypto accounts
+ * Transform raw API tweets into our CryptoTweet format
  */
-export async function fetchCryptoTweets(options?: {
-  maxResults?: number;
-  accounts?: string[];
-}): Promise<CryptoTweet[]> {
-  const { maxResults = 50, accounts = MONITORED_ACCOUNTS } = options || {};
-
-  // Fetch tweets from all accounts in parallel
-  const results = await Promise.allSettled(
-    accounts.map(username => fetchUserTweets(username))
-  );
-
-  const allTweets: TwitterApiTweet[] = [];
-
-  for (const result of results) {
-    if (result.status === 'fulfilled') {
-      allTweets.push(...result.value);
-    } else {
-      console.warn('[twitterClient] Failed to fetch from account:', result.reason);
-    }
-  }
-
-  // Transform to our format
-  const cryptoTweets: CryptoTweet[] = allTweets.map(tweet => {
+function transformTweets(rawTweets: TwitterApiTweet[]): CryptoTweet[] {
+  return rawTweets.map(tweet => {
     const mentionedAssets = extractAssets(tweet.text);
     const category = categorizeFromAssets(mentionedAssets, tweet.text);
     const media = extractMedia(tweet);
 
     return {
       id: tweet.id,
+      url: tweet.url || `https://x.com/${tweet.author?.userName || 'unknown'}/status/${tweet.id}`,
       authorUsername: tweet.author?.userName || 'unknown',
       authorDisplayName: tweet.author?.name || 'Unknown',
       authorAvatar: tweet.author?.profilePicture || '',
@@ -153,6 +144,19 @@ export async function fetchCryptoTweets(options?: {
       media,
     };
   });
+}
+
+/**
+ * Fetch recent tweets from all monitored crypto accounts
+ */
+export async function fetchCryptoTweets(options?: {
+  maxResults?: number;
+  accounts?: string[];
+}): Promise<CryptoTweet[]> {
+  const { maxResults = 60, accounts = MONITORED_ACCOUNTS } = options || {};
+
+  const rawTweets = await searchTweetsByAccounts(accounts);
+  const cryptoTweets = transformTweets(rawTweets);
 
   // Sort by date (newest first)
   cryptoTweets.sort((a, b) =>

@@ -5,7 +5,7 @@ import {
   SocialTradingLayout,
   ColumnHeader,
 } from './SocialTradingLayout';
-import { type CryptoTweet, type TweetCategory } from './TweetCard';
+import { type CryptoTweet } from './TweetCard';
 import { TwitterFeedColumn } from './TwitterFeedColumn';
 import { CenterPanel } from './CenterPanel';
 import { TradeControlPanel } from './TradeControlPanel';
@@ -14,7 +14,6 @@ import { useSocialTrade, SocialTradeProvider } from '@/contexts/SocialTradeConte
 import { useUnifiedSetupContext } from '@/contexts/UnifiedSetupContext';
 import { usePolicyValidation } from '@/hooks/usePolicyValidation';
 import { saltApi, NarrativeSuggestion } from '@/lib/api';
-import { getShuffledTweets } from '@/data/mockTweets';
 
 interface SocialTradingTabProps {
   accountId: string | null;
@@ -72,7 +71,7 @@ function SocialTradingContent({
   // Tweet feed state
   const [tweets, setTweets] = useState<CryptoTweet[]>([]);
   const [isLoadingTweets, setIsLoadingTweets] = useState(true);
-  const [feedSource, setFeedSource] = useState<'api' | 'mock' | 'cache'>('mock');
+  const [feedSource, setFeedSource] = useState<'api' | 'cache'>('api');
 
   // Execution state
   const [isExecuting, setIsExecuting] = useState(false);
@@ -88,14 +87,13 @@ function SocialTradingContent({
         setTweets(data.tweets);
         setFeedSource(data.source || 'api');
       } else {
-        // Fallback to mock if API returns empty
-        setTweets(getShuffledTweets());
-        setFeedSource('mock');
+        setTweets([]);
+        setFeedSource('api');
       }
     } catch (err) {
       console.error('Failed to fetch tweets:', err);
-      setTweets(getShuffledTweets());
-      setFeedSource('mock');
+      setTweets([]);
+      setFeedSource('api');
     } finally {
       setIsLoadingTweets(false);
     }
@@ -154,27 +152,18 @@ function SocialTradingContent({
     }
   }, [accountId, suggestion, stakeUsd, leverage, clearSuggestion, clearSelection, onTradeSuccess]);
 
-  // Filter tweets by category
-  const getTweetsByCategory = (category: TweetCategory): CryptoTweet[] => {
-    return tweets.filter(t => t.category === category);
-  };
-
-  const getTrendingTweets = (): CryptoTweet[] => {
-    // Sort by engagement and return top tweets
-    return [...tweets]
-      .sort((a, b) => (b.metrics.likes + b.metrics.retweets * 2) - (a.metrics.likes + a.metrics.retweets * 2))
-      .slice(0, 20);
-  };
+  // KOL groups for the two columns
+  const KOL_LEFT = ['CryptoHayes', 'Pentosh1', 'DefiIgnas'];
+  const KOL_RIGHT = ['aixbt_agent', 'tier10k', 'MustStopMurad'];
 
   // No header needed - columns have their own titles
   const header = null;
 
-  // Left column - AI, L1, Infrastructure, Other tweets
+  // Left column — Macro & Narratives (CryptoHayes, Pentosh1, DefiIgnas)
   const leftColumn = (
     <TwitterFeedColumn
-      title="AI & L1"
-      category="ai"
-      categories={['ai', 'l1', 'infrastructure', 'other']}
+      title="Macro & Narratives"
+      kols={KOL_LEFT}
       tweets={tweets}
       isLoading={isLoadingTweets}
       selectedTweetId={selectedTweet?.id}
@@ -185,7 +174,7 @@ function SocialTradingContent({
     />
   );
 
-  // Center column - Always "Your Narrative"
+  // Center column — Your Narrative
   const centerColumn = (
     <div className="h-full overflow-hidden">
       <ColumnHeader title="Your Narrative" />
@@ -200,12 +189,11 @@ function SocialTradingContent({
     </div>
   );
 
-  // Right column - Meme, DeFi, Gaming tweets
+  // Right column — Alpha & Signals (aixbt_agent, tier10k, MustStopMurad)
   const rightColumn = (
     <TwitterFeedColumn
-      title="Meme & DeFi"
-      category="meme"
-      categories={['meme', 'defi', 'gaming']}
+      title="Alpha & Signals"
+      kols={KOL_RIGHT}
       tweets={tweets}
       isLoading={isLoadingTweets}
       selectedTweetId={selectedTweet?.id}

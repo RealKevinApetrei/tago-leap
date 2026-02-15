@@ -8,6 +8,7 @@ export type TweetSentiment = 'bullish' | 'bearish' | 'neutral';
 
 export interface CryptoTweet {
   id: string;
+  url: string;
   authorUsername: string;
   authorDisplayName: string;
   authorAvatar: string;
@@ -183,6 +184,19 @@ export function TweetCard({
             >
               {isSelected ? 'Selected' : 'Select'}
             </motion.button>
+            <motion.a
+              href={tweet.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/[0.08] text-white/70 hover:bg-white/[0.12] hover:text-white transition-colors flex items-center gap-1"
+              whileHover={{ scale: 1.02, y: -1 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ duration: 0.15 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <XLogoIcon className="w-3 h-3" />
+              <ExternalLinkIcon className="w-3 h-3" />
+            </motion.a>
           </div>
         </div>
       </div>
@@ -352,6 +366,16 @@ function XLogoIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">
       <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  );
+}
+
+function ExternalLinkIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <polyline points="15 3 21 3 21 9" />
+      <line x1="10" y1="14" x2="21" y2="3" />
     </svg>
   );
 }

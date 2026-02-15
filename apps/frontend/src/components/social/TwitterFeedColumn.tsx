@@ -1,16 +1,15 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { TweetCard, type CryptoTweet, type TweetCategory } from './TweetCard';
+import { TweetCard, type CryptoTweet } from './TweetCard';
 import { ColumnHeader } from './SocialTradingLayout';
 import { useAutoScroll } from '@/hooks/useAutoScroll';
 import { ASCIILoader } from '@/components/ascii';
 
 interface TwitterFeedColumnProps {
   title: string;
-  category: TweetCategory;
-  /** Additional categories to include alongside the primary category */
-  categories?: TweetCategory[];
+  /** KOL usernames to show in this column */
+  kols: readonly string[];
   tweets: CryptoTweet[];
   isLoading: boolean;
   selectedTweetId?: string;
@@ -18,16 +17,13 @@ interface TwitterFeedColumnProps {
   onBearish: (tweet: CryptoTweet) => void;
   onSelect: (tweet: CryptoTweet) => void;
   onRefresh?: () => void;
-  /** Enable auto-scrolling (default: true) */
   autoScroll?: boolean;
-  /** Scroll speed in pixels per second (default: 30) */
   scrollSpeed?: number;
 }
 
 export function TwitterFeedColumn({
   title,
-  category,
-  categories,
+  kols,
   tweets,
   isLoading,
   selectedTweetId,
@@ -38,8 +34,7 @@ export function TwitterFeedColumn({
   autoScroll = true,
   scrollSpeed = 30,
 }: TwitterFeedColumnProps) {
-  const allowedCategories = categories || [category];
-  const filteredTweets = tweets.filter(t => allowedCategories.includes(t.category));
+  const filteredTweets = tweets.filter(t => kols.includes(t.authorUsername));
 
   const {
     containerRef,
@@ -57,7 +52,6 @@ export function TwitterFeedColumn({
         badge={filteredTweets.length.toString()}
         action={
           <div className="flex items-center gap-2">
-            {/* Paused indicator */}
             {autoScroll && isPaused && filteredTweets.length > 1 && (
               <span className="text-[10px] text-white/30 px-1.5 py-0.5 bg-white/[0.05] rounded">
                 Paused
@@ -85,7 +79,7 @@ export function TwitterFeedColumn({
         {isLoading ? (
           <LoadingState />
         ) : filteredTweets.length === 0 ? (
-          <EmptyState category={category} />
+          <EmptyState />
         ) : (
           <div className="divide-y divide-white/[0.06] pt-2">
             <AnimatePresence mode="popLayout">
@@ -156,23 +150,13 @@ function LoadingState() {
   );
 }
 
-function EmptyState({ category }: { category: TweetCategory }) {
-  const categoryLabels: Record<TweetCategory, string> = {
-    ai: 'AI & Tech',
-    meme: 'Meme Coins',
-    defi: 'DeFi',
-    l1: 'Layer 1',
-    gaming: 'Gaming',
-    infrastructure: 'Infrastructure',
-    other: 'Other',
-  };
-
+function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center h-full py-12 px-6 text-center">
       <div className="w-12 h-12 rounded-full bg-white/[0.05] flex items-center justify-center mb-4">
         <TweetIcon className="w-6 h-6 text-white/30" />
       </div>
-      <h3 className="text-sm font-medium text-white/60">No {categoryLabels[category]} tweets</h3>
+      <h3 className="text-sm font-medium text-white/60">No tweets yet</h3>
       <p className="mt-1 text-xs text-white/40">
         Check back soon for new posts
       </p>

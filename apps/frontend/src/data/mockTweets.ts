@@ -165,6 +165,7 @@ export const MOCK_TWEETS: CryptoTweet[] = Array.from({ length: 100 }, (_, index)
 
   return {
     id: `mock_tweet_${index + 1}`,
+    url: `https://x.com/${author.username}/status/mock_tweet_${index + 1}`,
     authorUsername: author.username,
     authorDisplayName: author.displayName,
     authorAvatar: author.avatar,
